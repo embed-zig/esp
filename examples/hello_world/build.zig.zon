@@ -1,0 +1,19 @@
+.{
+    .name = .hello_world,
+    .version = "0.1.0",
+    .fingerprint = 0xf73eae9154ffb7c8,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .espz = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "board",
+        "README.md",
+        ".gitignore",
+    },
+}

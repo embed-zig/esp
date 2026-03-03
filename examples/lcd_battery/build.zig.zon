@@ -1,0 +1,19 @@
+.{
+    .name = .lcd_battery,
+    .version = "0.1.0",
+    .fingerprint = 0xcb521072dc338aa4,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .espz = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "board",
+        "README.md",
+        ".gitignore",
+    },
+}
