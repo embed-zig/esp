@@ -58,6 +58,17 @@ pub fn main() !void {
         .sub_path = main_path,
         .data = main_content,
     });
+
+    const component_yml = try buildComponentYml(allocator);
+    if (component_yml) |yml_content| {
+        defer allocator.free(yml_content);
+        const yml_path = try std.fs.path.join(allocator, &.{ project_dir, "main", "idf_component.yml" });
+        defer allocator.free(yml_path);
+        try std.fs.cwd().writeFile(.{
+            .sub_path = yml_path,
+            .data = yml_content,
+        });
+    }
 }
 
 fn writeEmbeddedFiles(allocator: std.mem.Allocator, main_dir: []const u8) !void {
@@ -198,4 +209,38 @@ fn hasCSources(comptime mod: anytype) bool {
         if (comptime std.mem.endsWith(u8, file.path, ".c")) return true;
     }
     return false;
+}
+
+fn hasExternalComponents(comptime mod: anytype) bool {
+    return @hasDecl(mod, "idf_external_components") and mod.idf_external_components.len > 0;
+}
+
+fn buildComponentYml(allocator: std.mem.Allocator) !?[]u8 {
+    comptime var has_any = false;
+    inline for (sources.modules) |entry| {
+        if (comptime hasExternalComponents(entry.root)) {
+            has_any = true;
+        }
+    }
+    if (!has_any) return null;
+
+    var out = std.array_list.Managed(u8).init(allocator);
+    defer out.deinit();
+
+    try out.appendSlice("dependencies:\n");
+    inline for (sources.modules) |entry| {
+        const mod = entry.root;
+        if (comptime hasExternalComponents(mod)) {
+            inline for (mod.idf_external_components) |dep| {
+                try out.appendSlice("  ");
+                try out.appendSlice(dep.name);
+                try out.appendSlice(": \"");
+                try out.appendSlice(dep.version);
+                try out.appendSlice("\"\n");
+            }
+        }
+    }
+
+    const slice = try out.toOwnedSlice();
+    return @as(?[]u8, slice);
 }

@@ -829,6 +829,7 @@ fn registerExternalZigLibraryStep(
             cmd.addArgs(&.{ "--dep", "esp_driver_i2c" });
             cmd.addArgs(&.{ "--dep", "esp_driver_ledc" });
             cmd.addArgs(&.{ "--dep", "esp_adc" });
+            cmd.addArgs(&.{ "--dep", "led_strip" });
         }
         cmd.addArg(b.fmt("-Mroot={s}", .{source_file}));
         if (board_file_for_zig_deps) |bf| {
@@ -846,6 +847,7 @@ fn registerExternalZigLibraryStep(
             cmd.addPrefixedFileArg("-Mesp_driver_i2c=", root.path(b, "src/esp_driver_i2c/root.zig"));
             cmd.addPrefixedFileArg("-Mesp_driver_ledc=", root.path(b, "src/esp_driver_ledc/root.zig"));
             cmd.addPrefixedFileArg("-Mesp_adc=", root.path(b, "src/esp_adc/root.zig"));
+            cmd.addPrefixedFileArg("-Mled_strip=", root.path(b, "src/led_strip/root.zig"));
         }
     } else {
         cmd.addArg(source_file);

@@ -11,8 +11,10 @@ pub const modules = [_]Entry{
     .{ .root = @import("esp_wifi/root.zig") },
     .{ .root = @import("bt/root.zig"), .sdkconfig_guard = "CONFIG_BT_ENABLED" },
     .{ .root = @import("freertos/root.zig") },
+    .{ .root = @import("esp_timer/root.zig") },
     .{ .root = @import("esp_rom/root.zig") },
     .{ .root = @import("newlib/root.zig") },
     .{ .root = @import("nvs_flash/root.zig") },
     .{ .root = @import("heap/root.zig") },
+    .{ .root = @import("led_strip/root.zig") },
 };
