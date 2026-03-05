@@ -1,7 +1,7 @@
 pub const master = @import("master.zig");
-pub const masterInit = master.masterInit;
-pub const masterWrite = master.masterWrite;
-pub const masterWriteRead = master.masterWriteRead;
+pub const I2cMaster = master.I2cMaster;
+pub const Config = master.Config;
+pub const Error = master.Error;
 
 pub const module_name = "esp_driver_i2c";
 pub const zig_root = "root.zig";

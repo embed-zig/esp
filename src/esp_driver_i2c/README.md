@@ -12,9 +12,9 @@ Typed sdkconfig definitions for I2C debug logging, slave driver version, and ISR
 
 ### Runtime API
 
-- `masterInit(port, sda, scl, freq)` — initialize I2C master bus
-- `masterWrite(port, addr, data, timeout_ms)` — write to device
-- `masterWriteRead(port, addr, write_data, read_data, timeout_ms)` — combined write-then-read
+- `I2cMaster.init(Config)` — initialize I2C master bus (port, SDA, SCL, frequency).
+- `I2cMaster.write(addr, data, timeout_ms)` — write to device.
+- `I2cMaster.writeRead(addr, write_data, read_data, timeout_ms)` — combined write-then-read.
 
 ## Dependencies
 

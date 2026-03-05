@@ -439,20 +439,11 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
         .timeout = options.runtime.timeout,
     };
 
-    const required_env_check_run = registerRequiredEnvCheckStepWithRoot(
-        b,
-        options.app_name,
-        options.espz_root,
-    );
-    if (options.runtime.esp_idf) |root| {
-        required_env_check_run.setEnvironmentVariable("ESP_IDF", root);
-    }
-
     const sdkconfig_arg = "../sdkconfig.generated";
     const idf_build_arg = "../idf";
     const idf_project_dir = joinPath(b, options.app_root, project_rel_dir);
 
-    const reconfigure_cmd = addIdfPyBaseCommand(
+    const reconfigure_cmd = addIdfPyBaseCommandWithEnv(
         b,
         runtime,
         idf_project_dir,
@@ -460,12 +451,18 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
         board_profile_name,
         idf_build_arg,
         extra_component_dirs,
+        options.runtime.esp_idf,
+        options.espz_root,
     );
-    if (options.runtime.esp_idf) |root| {
-        reconfigure_cmd.setEnvironmentVariable("ESP_IDF", root);
-    }
     reconfigure_cmd.addArg("reconfigure");
-    reconfigure_cmd.step.dependOn(&required_env_check_run.step);
+    if (options.runtime.esp_idf == null) {
+        const required_env_check_run = registerRequiredEnvCheckStepWithRoot(
+            b,
+            options.app_name,
+            options.espz_root,
+        );
+        reconfigure_cmd.step.dependOn(&required_env_check_run.step);
+    }
     reconfigure_cmd.step.dependOn(sdkconfig_step);
     reconfigure_cmd.step.dependOn(project_step);
     reconfigure_cmd.step.dependOn(app_main_step);
@@ -479,7 +476,7 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
         break :blk step;
     } else &reconfigure_cmd.step;
 
-    const idf_build_cmd = addIdfPyBaseCommand(
+    const idf_build_cmd = addIdfPyBaseCommandWithEnv(
         b,
         runtime,
         idf_project_dir,
@@ -487,10 +484,9 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
         board_profile_name,
         idf_build_arg,
         extra_component_dirs,
+        options.runtime.esp_idf,
+        options.espz_root,
     );
-    if (options.runtime.esp_idf) |root| {
-        idf_build_cmd.setEnvironmentVariable("ESP_IDF", root);
-    }
     idf_build_cmd.addArg("build");
     idf_build_cmd.step.dependOn(&reconfigure_cmd.step);
     if (executable) |compile| {
@@ -527,7 +523,7 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
     else
         &idf_build_cmd.step;
 
-    const flash_cmd = addIdfPyBaseCommand(
+    const flash_cmd = addIdfPyBaseCommandWithEnv(
         b,
         runtime,
         idf_project_dir,
@@ -535,10 +531,9 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
         board_profile_name,
         idf_build_arg,
         extra_component_dirs,
+        options.runtime.esp_idf,
+        options.espz_root,
     );
-    if (options.runtime.esp_idf) |root| {
-        flash_cmd.setEnvironmentVariable("ESP_IDF", root);
-    }
     addExternalSerialArgs(flash_cmd, options.runtime.port);
     flash_cmd.addArg("flash");
     flash_cmd.step.dependOn(&idf_build_cmd.step);
@@ -552,7 +547,7 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
         break :blk step;
     } else &flash_cmd.step;
 
-    const monitor_cmd = addIdfPyMonitorCommand(
+    const monitor_cmd = addIdfPyMonitorCommandWithEnv(
         b,
         runtime,
         idf_project_dir,
@@ -562,10 +557,8 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
         extra_component_dirs,
         options.espz_root,
         false,
+        options.runtime.esp_idf,
     );
-    if (options.runtime.esp_idf) |root| {
-        monitor_cmd.setEnvironmentVariable("ESP_IDF", root);
-    }
     monitor_cmd.step.dependOn(&idf_build_cmd.step);
 
     const monitor_step: *std.Build.Step = if (options.expose_prefixed_steps) blk: {
@@ -577,7 +570,7 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
         break :blk step;
     } else &monitor_cmd.step;
 
-    const flash_monitor_cmd = addIdfPyMonitorCommand(
+    const flash_monitor_cmd = addIdfPyMonitorCommandWithEnv(
         b,
         runtime,
         idf_project_dir,
@@ -587,10 +580,8 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
         extra_component_dirs,
         options.espz_root,
         true,
+        options.runtime.esp_idf,
     );
-    if (options.runtime.esp_idf) |root| {
-        flash_monitor_cmd.setEnvironmentVariable("ESP_IDF", root);
-    }
     flash_monitor_cmd.step.dependOn(&idf_build_cmd.step);
 
     const flash_monitor_step: *std.Build.Step = if (options.expose_prefixed_steps) blk: {
@@ -827,9 +818,22 @@ fn registerExternalZigLibraryStep(
             cmd.addArgs(&.{ "--dep", "nvs_flash" });
             cmd.addArgs(&.{ "--dep", "heap" });
             cmd.addArgs(&.{ "--dep", "esp_driver_i2c" });
+            cmd.addArgs(&.{ "--dep", "esp_driver_i2s" });
             cmd.addArgs(&.{ "--dep", "esp_driver_ledc" });
+            cmd.addArgs(&.{ "--dep", "esp_driver_spi" });
+            cmd.addArgs(&.{ "--dep", "esp_driver_gpio" });
             cmd.addArgs(&.{ "--dep", "esp_adc" });
+            cmd.addArgs(&.{ "--dep", "esp_sr" });
             cmd.addArgs(&.{ "--dep", "led_strip" });
+            cmd.addArgs(&.{ "--dep", "app_metadata" });
+            cmd.addArgs(&.{ "--dep", "esp_cpu" });
+            cmd.addArgs(&.{ "--dep", "esp_driver_uart" });
+            cmd.addArgs(&.{ "--dep", "esp_netif" });
+            cmd.addArgs(&.{ "--dep", "esp_random" });
+            cmd.addArgs(&.{ "--dep", "esp_timer" });
+            cmd.addArgs(&.{ "--dep", "lwip" });
+            cmd.addArgs(&.{ "--dep", "mbedtls" });
+            cmd.addArgs(&.{ "--dep", "utils" });
         }
         cmd.addArg(b.fmt("-Mroot={s}", .{source_file}));
         if (board_file_for_zig_deps) |bf| {
@@ -844,10 +848,32 @@ fn registerExternalZigLibraryStep(
             cmd.addPrefixedFileArg("-Mnewlib=", root.path(b, "src/newlib/root.zig"));
             cmd.addPrefixedFileArg("-Mnvs_flash=", root.path(b, "src/nvs_flash/root.zig"));
             cmd.addPrefixedFileArg("-Mheap=", root.path(b, "src/heap/root.zig"));
+
+            cmd.addArgs(&.{ "--dep", "utils" });
             cmd.addPrefixedFileArg("-Mesp_driver_i2c=", root.path(b, "src/esp_driver_i2c/root.zig"));
+            cmd.addArgs(&.{ "--dep", "utils" });
+            cmd.addPrefixedFileArg("-Mesp_driver_i2s=", root.path(b, "src/esp_driver_i2s/root.zig"));
+            cmd.addArgs(&.{ "--dep", "utils" });
             cmd.addPrefixedFileArg("-Mesp_driver_ledc=", root.path(b, "src/esp_driver_ledc/root.zig"));
+            cmd.addArgs(&.{ "--dep", "utils" });
+            cmd.addPrefixedFileArg("-Mesp_driver_spi=", root.path(b, "src/esp_driver_spi/root.zig"));
+            cmd.addArgs(&.{ "--dep", "utils" });
+            cmd.addPrefixedFileArg("-Mesp_driver_gpio=", root.path(b, "src/esp_driver_gpio/root.zig"));
             cmd.addPrefixedFileArg("-Mesp_adc=", root.path(b, "src/esp_adc/root.zig"));
+            cmd.addArgs(&.{ "--dep", "utils" });
+            cmd.addPrefixedFileArg("-Mesp_sr=", root.path(b, "src/esp_sr/root.zig"));
             cmd.addPrefixedFileArg("-Mled_strip=", root.path(b, "src/led_strip/root.zig"));
+
+            cmd.addPrefixedFileArg("-Mapp_metadata=", root.path(b, "src/app_metadata/root.zig"));
+            cmd.addPrefixedFileArg("-Mesp_cpu=", root.path(b, "src/esp_cpu/root.zig"));
+            cmd.addPrefixedFileArg("-Mesp_driver_uart=", root.path(b, "src/esp_driver_uart/root.zig"));
+            cmd.addPrefixedFileArg("-Mesp_netif=", root.path(b, "src/esp_netif/root.zig"));
+            cmd.addPrefixedFileArg("-Mesp_random=", root.path(b, "src/esp_random/root.zig"));
+            cmd.addPrefixedFileArg("-Mesp_timer=", root.path(b, "src/esp_timer/root.zig"));
+            cmd.addPrefixedFileArg("-Mlwip=", root.path(b, "src/lwip/root.zig"));
+            cmd.addPrefixedFileArg("-Mmbedtls=", root.path(b, "src/mbedtls/root.zig"));
+
+            cmd.addPrefixedFileArg("-Mutils=", root.path(b, "src/utils/root.zig"));
         }
     } else {
         cmd.addArg(source_file);
@@ -939,7 +965,27 @@ fn addIdfPyBaseCommand(
     idf_build_dir: ?[]const u8,
     extra_component_dirs: []const std.Build.LazyPath,
 ) *std.Build.Step.Run {
-    const cmd = b.addSystemCommand(&.{"python3"});
+    return addIdfPyBaseCommandWithEnv(b, runtime, app_dir, sdkconfig_file, board_profile_name, idf_build_dir, extra_component_dirs, null, null);
+}
+
+fn addIdfPyBaseCommandWithEnv(
+    b: *std.Build,
+    runtime: RuntimeOptions,
+    app_dir: []const u8,
+    sdkconfig_file: ?[]const u8,
+    board_profile_name: ?[]const u8,
+    idf_build_dir: ?[]const u8,
+    extra_component_dirs: []const std.Build.LazyPath,
+    esp_idf: ?[]const u8,
+    espz_root: ?std.Build.LazyPath,
+) *std.Build.Step.Run {
+    const cmd = if (esp_idf) |idf_root| blk: {
+        const c = b.addSystemCommand(&.{"bash"});
+        c.addFileArg(espzPath(b, espz_root, "idf/build/idf_env_wrapper.sh"));
+        c.addArg(idf_root);
+        c.addArg("python3");
+        break :blk c;
+    } else b.addSystemCommand(&.{"python3"});
     cmd.setCwd(b.path(app_dir));
     cmd.addArg(runtime.idf_py);
     if (idf_build_dir) |build_dir| {
@@ -967,7 +1013,28 @@ fn addIdfPyMonitorCommand(
     espz_root: ?std.Build.LazyPath,
     include_flash: bool,
 ) *std.Build.Step.Run {
-    const cmd = b.addSystemCommand(&.{"python3"});
+    return addIdfPyMonitorCommandWithEnv(b, runtime, app_dir, sdkconfig_file, board_profile_name, idf_build_dir, extra_component_dirs, espz_root, include_flash, null);
+}
+
+fn addIdfPyMonitorCommandWithEnv(
+    b: *std.Build,
+    runtime: RuntimeOptions,
+    app_dir: []const u8,
+    sdkconfig_file: ?[]const u8,
+    board_profile_name: ?[]const u8,
+    idf_build_dir: ?[]const u8,
+    extra_component_dirs: []const std.Build.LazyPath,
+    espz_root: ?std.Build.LazyPath,
+    include_flash: bool,
+    esp_idf: ?[]const u8,
+) *std.Build.Step.Run {
+    const cmd = if (esp_idf) |idf_root| blk: {
+        const c = b.addSystemCommand(&.{"bash"});
+        c.addFileArg(espzPath(b, espz_root, "idf/build/idf_env_wrapper.sh"));
+        c.addArg(idf_root);
+        c.addArg("python3");
+        break :blk c;
+    } else b.addSystemCommand(&.{"python3"});
     cmd.setCwd(b.path(app_dir));
     cmd.addFileArg(espzPath(b, espz_root, "idf/build/pty_monitor.py"));
     if (runtime.timeout) |t| {

@@ -11,6 +11,7 @@ pub const ExternalExampleOptions = struct {
     board_file: []const u8,
     build_dir: []const u8 = "build",
     compile_check_with_idf_module: bool = true,
+    unprefixed_step_profile: idf_workflow.UnprefixedStepProfile = .runtime_only,
 
     runtime: idf_workflow.ExternalRuntimeOptions,
 };
@@ -36,13 +37,17 @@ pub fn registerExternalExample(
         .espz_root = espz_dep.path(""),
         .expose_prefixed_steps = false,
         .expose_unprefixed_steps = true,
-        .unprefixed_step_profile = .runtime_only,
+        .unprefixed_step_profile = options.unprefixed_step_profile,
     });
 }
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    _ = b.addModule("espz", .{
+        .root_source_file = b.path("src/component.zig"),
+    });
     const test_options = b.addOptions();
     test_options.addOption([]const u8, "zig_exe_path", b.graph.zig_exe);
 

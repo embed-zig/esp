@@ -35,3 +35,9 @@ int32_t espz_adc_oneshot_read(void *handle, int channel, int *out_raw)
     if (handle == NULL || out_raw == NULL) return ESP_ERR_INVALID_ARG;
     return adc_oneshot_read((adc_oneshot_unit_handle_t)handle, channel, out_raw);
 }
+
+int32_t espz_adc_oneshot_deinit(void *handle)
+{
+    if (handle == NULL) return ESP_ERR_INVALID_ARG;
+    return adc_oneshot_del_unit((adc_oneshot_unit_handle_t)handle);
+}

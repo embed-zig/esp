@@ -1,6 +1,6 @@
 const std = @import("std");
 const sdkconfig = @import("idf_sdkconfig");
-const config_overrides = @import("../utils/config_overrides.zig");
+const config_overrides = @import("utils").config_overrides;
 
 pub const module_name = "esp_driver_rmt";
 

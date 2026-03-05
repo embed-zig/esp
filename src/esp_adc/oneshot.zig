@@ -9,6 +9,7 @@ pub fn check(result: EspError) Error!void {
 
 extern fn espz_adc_oneshot_init(unit: i32, channel: i32, out: *?*anyopaque) EspError;
 extern fn espz_adc_oneshot_read(handle: *anyopaque, channel: i32, out_raw: *i32) EspError;
+extern fn espz_adc_oneshot_deinit(handle: *anyopaque) EspError;
 
 pub const Oneshot = struct {
     handle: *anyopaque,
@@ -24,5 +25,10 @@ pub const Oneshot = struct {
         var raw: i32 = 0;
         try check(espz_adc_oneshot_read(self.handle, self.channel, &raw));
         return raw;
+    }
+
+    pub fn deinit(self: *Oneshot) Error!void {
+        try check(espz_adc_oneshot_deinit(self.handle));
+        self.handle = undefined;
     }
 };

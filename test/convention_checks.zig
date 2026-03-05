@@ -170,6 +170,94 @@ test "src modules: root.zig must not contain extern fn (use separate impl files)
     }
 }
 
+// ── src/<module>/test/ compile-test convention checks ──
+// Modules with zig_root in root.zig expose runtime API and must have
+// a test/ directory containing a standalone ESP-IDF app for cross-compilation testing.
+
+fn moduleHasZigRoot(src: std.fs.Dir, name: []const u8) bool {
+    var buf: [512]u8 = undefined;
+    const p = joinPath(&buf, name, "root.zig");
+    return fileContainsString(src, p, "pub const zig_root");
+}
+
+/// Modules not yet injected by workflow.zig (no --dep in registerExternalZigLibraryStep).
+/// Remove entries as they get wired up.
+const compile_test_pending = [_][]const u8{};
+
+fn isCompileTestPending(name: []const u8) bool {
+    for (compile_test_pending) |pending| {
+        if (std.mem.eql(u8, name, pending)) return true;
+    }
+    return false;
+}
+
+test "src modules: runtime modules (zig_root) must have test/ directory" {
+    var src = try std.fs.cwd().openDir("src", .{ .iterate = true });
+    defer src.close();
+
+    var fail_count: usize = 0;
+    var total: usize = 0;
+    var iter = src.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind != .directory) continue;
+        if (shouldSkipModule(entry.name)) continue;
+        if (!dirHasRealFiles(src, entry.name)) continue;
+        if (!moduleHasZigRoot(src, entry.name)) continue;
+        if (isCompileTestPending(entry.name)) continue;
+
+        total += 1;
+        var buf: [512]u8 = undefined;
+        const test_dir = joinPath(&buf, entry.name, "test");
+        if (!dirHasRealFiles(src, test_dir)) {
+            std.debug.print("  MISSING: src/{s}/test/ (runtime module needs compile test)\n", .{entry.name});
+            fail_count += 1;
+        }
+    }
+    if (fail_count > 0) {
+        std.debug.print("{d}/{d} runtime module(s) missing test/ directory\n", .{ fail_count, total });
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "src modules: test/ must have build.zig, build.zig.zon, src/main.zig, board/*.zig" {
+    var src = try std.fs.cwd().openDir("src", .{ .iterate = true });
+    defer src.close();
+
+    var fail_count: usize = 0;
+    var iter = src.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind != .directory) continue;
+        if (shouldSkipModule(entry.name)) continue;
+        if (!dirHasRealFiles(src, entry.name)) continue;
+        if (!moduleHasZigRoot(src, entry.name)) continue;
+
+        var buf_test: [512]u8 = undefined;
+        const test_dir = joinPath(&buf_test, entry.name, "test");
+        if (!dirHasRealFiles(src, test_dir)) continue;
+
+        const required_files = [_][]const u8{ "build.zig", "build.zig.zon", "src/main.zig" };
+        for (required_files) |file| {
+            var buf: [512]u8 = undefined;
+            const p = joinPath(&buf, test_dir, file);
+            if (!fileExistsIn(src, p)) {
+                std.debug.print("  MISSING: src/{s}/test/{s}\n", .{ entry.name, file });
+                fail_count += 1;
+            }
+        }
+
+        var buf_board: [512]u8 = undefined;
+        const board_path = joinPath(&buf_board, test_dir, "board");
+        if (!dirContainsZigFile(src, board_path)) {
+            std.debug.print("  MISSING: src/{s}/test/board/*.zig\n", .{entry.name});
+            fail_count += 1;
+        }
+    }
+    if (fail_count > 0) {
+        std.debug.print("{d} file(s) missing in module test/ directories\n", .{fail_count});
+        return error.TestUnexpectedResult;
+    }
+}
+
 // ── examples/<app>/ convention checks ──
 // AGENTS.md §9: every example app needs build.zig, build.zig.zon,
 // README.md, src/main.zig, and at least one board/*.zig.

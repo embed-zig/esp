@@ -1,15 +1,25 @@
 # lwip
 
-Sdkconfig binding for the ESP-IDF `lwip` component.
+Sdkconfig bindings and BSD socket runtime API for the ESP-IDF lwIP stack.
 
 ## ESP-IDF component
 
-Maps to [`lwip`](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/network/esp_netif.html) (underlying TCP/IP stack for `esp_netif`).
+Maps to [`lwip`](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/lwip.html).
 
 ## Module boundary
 
-Provides sdkconfig options for the lwIP TCP/IP stack: socket limits, TCP/UDP tuning, DHCP client/server, DNS, IPv4/IPv6, SNTP, PPP/SLIP, ICMP, hooks, and task configuration. No runtime Zig API.
+- `config.zig` — sdkconfig bindings for lwIP tuning (buffer sizes, TCP/UDP options, etc.).
+- `socket.zig` — Zig-friendly wrappers over the lwIP BSD socket API:
+  - TCP: `socket`, `connect`, `send`, `recv`, `listen`, `accept`, `close`.
+  - UDP: `sendTo`, `recvFrom`.
+  - Options: `setRecvTimeout`, `setSendTimeout`, `setTcpNoDelay`, `setNonBlocking`.
+  - Helpers: `bind`, `getBoundPort`, `htons`, `ntohs`.
+
+IPv4 address utilities are shared with `esp_netif/netif.zig` to avoid duplication.
+
+Does **not** cover raw sockets, IPv6, or netconn/pbuf-level APIs.
 
 ## Dependencies
 
-No runtime dependencies.
+- ESP-IDF `lwip` component (linked implicitly via the network stack).
+- `esp_netif` module (for shared IP address conversion helpers).

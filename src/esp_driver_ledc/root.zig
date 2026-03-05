@@ -1,6 +1,11 @@
-pub const backlight = @import("backlight.zig");
-pub const backlightInit = backlight.backlightInit;
-pub const setDutyPercent = backlight.setDutyPercent;
+pub const config = @import("config.zig");
+pub const ledc = @import("ledc.zig");
+
+pub const Ledc = ledc.Ledc;
+pub const Config = ledc.Config;
+pub const TimerConfig = ledc.TimerConfig;
+pub const ChannelConfig = ledc.ChannelConfig;
+pub const Error = ledc.Error;
 
 pub const module_name = "esp_driver_ledc";
 pub const zig_root = "root.zig";

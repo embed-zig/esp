@@ -6,3 +6,7 @@ pub const gpio = @import("esp_driver_gpio/root.zig");
 pub const esp_rom = @import("esp_rom/root.zig");
 pub const heap = @import("heap/root.zig");
 pub const newlib = @import("newlib/root.zig");
+pub const lwip = @import("lwip/root.zig");
+pub const esp_netif = @import("esp_netif/root.zig");
+pub const app_metadata = @import("app_metadata/root.zig");
+pub const mbedtls = @import("mbedtls/root.zig");
