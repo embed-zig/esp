@@ -19,10 +19,16 @@ Agent guide for ESPZ (Zig-first ESP-IDF binding project).
 ## 2) Environment prerequisites
 - Zig toolchain: use the Xtensa-capable fork from [embed-zig/esp-zig-bootstrap](https://github.com/embed-zig/esp-zig-bootstrap) (`>= 0.14.0`). Upstream Zig does not support Xtensa.
 - ESP-IDF env is required for `*-configure/*-idf-build/*-flash/*-monitor`.
-- Typical setup:
+- **Recommended** (no manual `source` needed):
+```bash
+zig build idf-build -Desp_idf=/path/to/esp-idf
+```
+  The workflow automatically activates the ESP-IDF environment via `idf/build/idf_env_wrapper.sh`.
+- Alternative (manual activation):
 ```bash
 export ESP_IDF=/path/to/esp-idf
 source "$ESP_IDF/export.sh"
+zig build idf-build
 ```
 - Optional explicit idf.py: `-Didf_py=/path/to/esp-idf/tools/idf.py`.
 
@@ -213,7 +219,7 @@ Rules:
 
 ### 8.3 Registration
 
-Add one line to `src/cmake.zig`:
+**Step 1.** Add one line to `src/cmake.zig`:
 
 ```zig
 pub const modules = .{
@@ -222,12 +228,91 @@ pub const modules = .{
 };
 ```
 
+**Step 2.** If the module has `zig_root`, add `--dep` and `-M` entries in
+`idf/build/workflow.zig` → `registerExternalZigLibraryStep` so firmware code
+can `@import("<module_name>")`. Search for the existing `--dep` block and append.
+
+**Step 3.** Update re-exports in `src/component.zig` (and `src/api.zig` if the
+module provides commonly used APIs).
+
 The framework automatically:
 1. Embeds C shim files into the scaffold generator binary.
 2. Releases them to `build/idf_project/main/espz_rt/<module>/` at build time.
 3. Compiles them as a separate `espz_runtime_shims` static library.
 4. Links `espz_runtime_shims` against the declared `idf_requires` components.
-5. If `zig_root` is set, injects `--dep <module_name>` into `zig build-lib` so firmware can `@import` it.
+5. If `zig_root` is set **and** `--dep` is wired in workflow.zig, injects the module into `zig build-lib` so firmware can `@import` it.
+
+### 8.4 Compile test (`test/`)
+
+Every runtime module (one with `zig_root` in `root.zig`) **must** have a `test/`
+directory containing a standalone ESP-IDF app that cross-compiles the module in
+isolation. This is enforced by `zig build test` (convention checks).
+
+Directory layout:
+
+```
+src/<module>/test/
+├── .gitignore           # build/ and .zig-cache/
+├── build.zig            # registers as an external example
+├── build.zig.zon        # depends on espz (path = "../../..")
+├── board/
+│   └── esp32s3.zig      # minimal sdkconfig (all defaults unless module needs special config)
+└── src/
+    └── main.zig         # @import("<module>") + comptime checks on public API
+```
+
+**`src/main.zig` template:**
+
+```zig
+const my_module = @import("<module_name>");
+
+comptime {
+    _ = my_module.SomeType;
+    _ = my_module.someFunction;
+    // ... all public symbols from root.zig
+}
+
+export fn zig_esp_main() callconv(.c) void {}
+```
+
+**`build.zig` template:**
+
+```zig
+const std = @import("std");
+const espz = @import("espz");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const board_file = b.option([]const u8, "board", "Board profile") orelse "board/esp32s3.zig";
+    const build_dir = b.option([]const u8, "build_dir", "Build directory") orelse "build";
+    const runtime = espz.workflow.externalRuntimeOptionsFromBuild(b);
+    _ = espz.registerExternalExample(b, .{
+        .target = target, .optimize = optimize,
+        .app_name = "<module_name>_compile_test",
+        .board_file = board_file, .build_dir = build_dir,
+        .compile_check_with_idf_module = false,
+        .unprefixed_step_profile = .full,
+        .runtime = runtime,
+    });
+}
+```
+
+**Board config notes:**
+- Most modules use all-default sdkconfig.
+- `bt` requires `.bt = modules.bt_config.withDefaultConfig(.{ .bt_enabled = true, ... })`.
+- `esp_sr` requires PSRAM: `.esp_psram = modules.esp_psram_config.withDefaultConfig(.{ .spiram = true, ... })` and `.target_soc = ... .{ .esp32s3_spiram_support = true }`.
+
+**Running the compile test:**
+
+```bash
+cd src/<module>/test
+zig build idf-build -Desp_idf=/path/to/esp-idf
+```
+
+**Pending modules:** Some modules with `zig_root` are not yet wired with `--dep` in
+`workflow.zig`. These are listed in `test/convention_checks.zig` → `compile_test_pending`.
+When wiring a pending module, remove it from that list and create its `test/` directory.
 
 ## 9) Writing a firmware example (`examples/<app>/`)
 
@@ -289,10 +374,13 @@ zig build flash-monitor -Dboard=board/esp32s3_szp.zig -Dport=/dev/cu.usbmodem143
 ## 10) Change checklist
 1. Run `zig fmt` on touched Zig files.
 2. Run `zig build` to verify build graph.
-3. If workflow wiring changed, verify an example builds end-to-end (`zig build flash-monitor -Dtimeout=15`).
-4. If runtime behavior changed, flash to hardware and verify.
-5. If you touched `src/<module>/`, ensure that module has/updates `README.md`.
-6. If you touched `config.zig`, ensure field docs are complete and run sdkconfig coverage check.
+3. Run `zig build test` to verify convention checks pass.
+4. If you added/modified a runtime module (`zig_root`), run its compile test:
+   `cd src/<module>/test && zig build idf-build -Desp_idf=...`
+5. If workflow wiring changed, verify an example builds end-to-end (`zig build flash-monitor -Dtimeout=15`).
+6. If runtime behavior changed, flash to hardware and verify.
+7. If you touched `src/<module>/`, ensure that module has/updates `README.md`.
+8. If you touched `config.zig`, ensure field docs are complete and run sdkconfig coverage check.
 
 ## 11) Non-goals / do-not-do
 - No Bazel validation flow.
