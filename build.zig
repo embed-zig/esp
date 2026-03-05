@@ -10,8 +10,16 @@ pub const AppOptions = struct {
     app_name: []const u8,
     board_file: []const u8,
     build_dir: []const u8 = "build",
+
+    /// Whether to compile-check the app against the esp-idf module during build graph construction.
+    /// Set to false if the app depends on ESP-IDF headers that are only available during idf-build.
     compile_check_with_idf_module: bool = true,
+
+    /// Controls which unprefixed build steps are exposed (runtime_only, full, etc.)
     unprefixed_step_profile: idf_workflow.UnprefixedStepProfile = .runtime_only,
+
+    /// Additional Zig modules to expose to the app firmware code via @import.
+    /// Each module is mapped to a name that can be used in the app source.
     extra_zig_modules: []const idf_workflow.ExtraZigModule = &.{},
 
     runtime: idf_workflow.ExternalRuntimeOptions,

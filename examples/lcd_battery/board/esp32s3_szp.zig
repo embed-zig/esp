@@ -3,6 +3,16 @@ const partition = @import("idf_partition");
 
 pub const config = .{
     .core = modules.esp_system_config.default,
+    .esp_misc = modules.esp_misc_config.withDefaultConfig(.{
+        .esp_default_cpu_freq_mhz = 240,
+        .esp_default_cpu_freq_mhz_160 = false,
+        .esp_default_cpu_freq_mhz_240 = true,
+    }),
+    .target_soc = modules.target_soc_config.withDefaultConfig(.{
+        .esp32s3_default_cpu_freq_mhz = 240,
+        .esp32s3_default_cpu_freq_160 = false,
+        .esp32s3_default_cpu_freq_240 = true,
+    }),
     .freertos = modules.freertos_config.default,
     .app_metadata = modules.app_metadata_config.default,
     .app_trace = modules.app_trace_config.default,
@@ -36,7 +46,6 @@ pub const config = .{
     .esp_https_server = modules.esp_https_server_config.default,
     .esp_hw_support = modules.esp_hw_support_config.default,
     .esp_lcd = modules.esp_lcd_config.default,
-    .esp_misc = modules.esp_misc_config.default,
     .esp_mm = modules.esp_mm_config.default,
     .esp_netif = modules.esp_netif_config.default,
     .esp_phy = modules.esp_phy_config.default,
@@ -63,7 +72,6 @@ pub const config = .{
     .soc = modules.soc_config.default,
     .spi_flash = modules.spi_flash_config.default,
     .spiffs = modules.spiffs_config.default,
-    .target_soc = modules.target_soc_config.default,
     .tcp_transport = modules.tcp_transport_config.default,
     .toolchain = modules.toolchain_config.default,
     .ulp = modules.ulp_config.default,

@@ -1,16 +1,22 @@
-const board = @import("board_pins");
+const board = @import("board");
 const esp_lcd = @import("esp_lcd");
 const rom = @import("esp_rom");
 const newlib = @import("newlib");
 const freertos = @import("freertos");
 const heap = @import("heap");
 const i2c = @import("esp_driver_i2c");
-const ledc = @import("esp_driver_ledc");
+const ledc_mod = @import("esp_driver_ledc");
+const ledc = ledc_mod.ledc;
 const adc = @import("esp_adc");
 
 const b = board.pins;
 
+const LCD_W: usize = b.lcd.h_res;
+const LCD_H: usize = b.lcd.v_res;
+const FB_PIXELS = LCD_W * LCD_H;
+
 const SPI_DMA_CH_AUTO: i32 = 3;
+const MALLOC_CAP_DMA: u32 = 4;
 
 const COLOR_BLACK: u16 = 0x0000;
 const COLOR_WHITE: u16 = 0xFFFF;
@@ -20,6 +26,8 @@ const COLOR_RED: u16 = 0xF800;
 
 const esp_rom_printf = rom.esp_rom_printf;
 
+const I2C_TIMEOUT: u32 = 100;
+
 fn lcdCheck(result: esp_lcd.Error!void) void {
     result catch {
         _ = esp_rom_printf("FATAL LCD error\n");
@@ -27,20 +35,18 @@ fn lcdCheck(result: esp_lcd.Error!void) void {
     };
 }
 
-// ── I2C / PCA9557 helpers ──
+var g_i2c: i2c.I2cMaster = undefined;
 
 fn pca9557_write_byte(reg: u8, data: u8) void {
-    const buf = [2]u8{ reg, data };
-    i2c.masterWrite(b.i2c.port, b.lcd_cs_expander.i2c_addr, &buf, 100) catch {
+    g_i2c.write(b.lcd_cs_expander.i2c_addr, &.{ reg, data }, I2C_TIMEOUT) catch {
         _ = esp_rom_printf("FATAL: I2C write failed\n");
         newlib.abort();
     };
 }
 
 fn pca9557_set_output(bit: u8, level: bool) void {
-    var read_buf = [1]u8{0};
-    const reg_buf = [1]u8{b.lcd_cs_expander.output_port_reg};
-    i2c.masterWriteRead(b.i2c.port, b.lcd_cs_expander.i2c_addr, &reg_buf, &read_buf, 100) catch {
+    var read_buf: [1]u8 = undefined;
+    g_i2c.writeRead(b.lcd_cs_expander.i2c_addr, &.{b.lcd_cs_expander.output_port_reg}, &read_buf, I2C_TIMEOUT) catch {
         _ = esp_rom_printf("FATAL: I2C write_read failed\n");
         newlib.abort();
     };
@@ -53,42 +59,57 @@ fn pca9557_set_output(bit: u8, level: bool) void {
     pca9557_write_byte(b.lcd_cs_expander.output_port_reg, output);
 }
 
-// ── drawing ──
+// ── framebuffer drawing (all ops write to fb[], flushed via flush) ──
 
-fn fillRect(panel: *esp_lcd.Panel, x: i32, y: i32, w: i32, h: i32, color: u16) void {
-    if (w <= 0 or h <= 0) return;
-    var line: [b.lcd.h_res]u16 = undefined;
-    const uw: usize = @intCast(w);
-    for (0..uw) |i| {
-        line[i] = color;
-    }
-    var row: i32 = 0;
-    while (row < h) : (row += 1) {
-        panel.drawBitmap(x, y + row, x + w, y + row + 1, @ptrCast(&line)) catch {
-            _ = esp_rom_printf("lcd: drawBitmap error at row %d\n", y + row);
-        };
+var fb: [*]u16 = undefined;
+
+fn fbSet(x: usize, y: usize, color: u16) void {
+    if (x < LCD_W and y < LCD_H) {
+        fb[y * LCD_W + x] = color;
     }
 }
 
-const DIGIT_FONT = [11][7]u8{
-    .{ 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E },
-    .{ 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E },
-    .{ 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F },
-    .{ 0x1E, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x1E },
-    .{ 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 },
-    .{ 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E },
-    .{ 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E },
-    .{ 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 },
-    .{ 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E },
-    .{ 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C },
-    .{ 0x18, 0x19, 0x02, 0x04, 0x08, 0x13, 0x03 },
+fn fbFillRect(x: i32, y: i32, w: i32, h: i32, color: u16) void {
+    if (w <= 0 or h <= 0) return;
+    const x0: usize = if (x < 0) 0 else @intCast(x);
+    const y0: usize = if (y < 0) 0 else @intCast(y);
+    const x1: usize = @min(@as(usize, @intCast(@max(x + w, 0))), LCD_W);
+    const y1: usize = @min(@as(usize, @intCast(@max(y + h, 0))), LCD_H);
+    for (y0..y1) |row| {
+        for (x0..x1) |col| {
+            fb[row * LCD_W + col] = color;
+        }
+    }
+}
+
+fn flush(panel: *esp_lcd.Panel) void {
+    panel.drawBitmap(0, 0, @intCast(LCD_W), @intCast(LCD_H), @ptrCast(fb)) catch {};
+}
+
+// ── font ──
+
+const DIGIT_FONT = [12][7]u8{
+    .{ 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E }, // 0
+    .{ 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E }, // 1
+    .{ 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F }, // 2
+    .{ 0x1E, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x1E }, // 3
+    .{ 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 }, // 4
+    .{ 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E }, // 5
+    .{ 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E }, // 6
+    .{ 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 }, // 7
+    .{ 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E }, // 8
+    .{ 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C }, // 9
+    .{ 0x18, 0x19, 0x02, 0x04, 0x08, 0x13, 0x03 }, // %
+    .{ 0x00, 0x04, 0x04, 0x00, 0x04, 0x04, 0x00 }, // :
 };
 
-fn drawGlyph(panel: *esp_lcd.Panel, x: i32, y: i32, ch: u8, fg: u16, bg: u16, scale: i32) void {
+fn fbDrawGlyph(x: i32, y: i32, ch: u8, fg: u16, bg: u16, scale: i32) void {
     const glyph: ?*const [7]u8 = if (ch >= '0' and ch <= '9')
         &DIGIT_FONT[ch - '0']
     else if (ch == '%')
         &DIGIT_FONT[10]
+    else if (ch == ':')
+        &DIGIT_FONT[11]
     else
         null;
     const g = glyph orelse return;
@@ -99,15 +120,15 @@ fn drawGlyph(panel: *esp_lcd.Panel, x: i32, y: i32, ch: u8, fg: u16, bg: u16, sc
         while (col < 5) : (col += 1) {
             const shift: u3 = @intCast(4 - col);
             const on = (g[@intCast(row)] & (@as(u8, 1) << shift)) != 0;
-            fillRect(panel, x + col * scale, y + row * scale, scale, scale, if (on) fg else bg);
+            fbFillRect(x + col * scale, y + row * scale, scale, scale, if (on) fg else bg);
         }
     }
 }
 
-fn drawText(panel: *esp_lcd.Panel, x: i32, y: i32, text: []const u8, fg: u16, bg: u16, scale: i32) void {
+fn fbDrawText(x: i32, y: i32, text: []const u8, fg: u16, bg: u16, scale: i32) void {
     var cursor = x;
     for (text) |ch| {
-        drawGlyph(panel, cursor, y, ch, fg, bg, scale);
+        fbDrawGlyph(cursor, y, ch, fg, bg, scale);
         cursor += 6 * scale;
     }
 }
@@ -167,49 +188,108 @@ const TEXT_MAX_CHARS: i32 = 4;
 const TEXT_CLEAR_W = TEXT_MAX_CHARS * 6 * TEXT_SCALE;
 const TEXT_CLEAR_H = 7 * TEXT_SCALE;
 
-fn drawBatteryShell(panel: *esp_lcd.Panel) void {
-    fillRect(panel, 0, 0, b.lcd.h_res, b.lcd.v_res, COLOR_BLACK);
-    fillRect(panel, BAT_BODY_X, BAT_BODY_Y, BAT_BODY_W, BAT_BODY_H, COLOR_WHITE);
-    fillRect(panel, BAT_BODY_X + BAT_BODY_W, BAT_BODY_Y + 32, 14, 36, COLOR_WHITE);
-    fillRect(panel, BAT_INNER_X, BAT_INNER_Y, BAT_INNER_W, BAT_INNER_H, COLOR_BLACK);
+fn drawBatteryShell() void {
+    fbFillRect(0, 0, @intCast(LCD_W), @intCast(LCD_H), COLOR_BLACK);
+    fbFillRect(BAT_BODY_X, BAT_BODY_Y, BAT_BODY_W, BAT_BODY_H, COLOR_WHITE);
+    fbFillRect(BAT_BODY_X + BAT_BODY_W, BAT_BODY_Y + 32, 14, 36, COLOR_WHITE);
+    fbFillRect(BAT_INNER_X, BAT_INNER_Y, BAT_INNER_W, BAT_INNER_H, COLOR_BLACK);
 }
 
-fn drawBatteryFill(panel: *esp_lcd.Panel, percent: u8) void {
+fn drawBatteryFill(percent: u8) void {
     const fill_x = BAT_INNER_X + BAT_FILL_PAD;
     const fill_y = BAT_INNER_Y + BAT_FILL_PAD_V;
     const fill_h = BAT_INNER_H - BAT_FILL_PAD_V * 2;
     const fill_w = @divTrunc(BAT_MAX_FILL * @as(i32, percent), 100);
 
-    fillRect(panel, fill_x, fill_y, BAT_MAX_FILL, fill_h, COLOR_BLACK);
+    fbFillRect(fill_x, fill_y, BAT_MAX_FILL, fill_h, COLOR_BLACK);
     if (fill_w > 0) {
-        fillRect(panel, fill_x, fill_y, fill_w, fill_h, batteryColor(percent));
+        fbFillRect(fill_x, fill_y, fill_w, fill_h, batteryColor(percent));
     }
 
-    fillRect(panel, TEXT_X, TEXT_Y, TEXT_CLEAR_W, TEXT_CLEAR_H, COLOR_BLACK);
+    fbFillRect(TEXT_X, TEXT_Y, TEXT_CLEAR_W, TEXT_CLEAR_H, COLOR_BLACK);
     var text_buf: [8]u8 = undefined;
     const text = formatPercent(&text_buf, percent);
-    drawText(panel, TEXT_X, TEXT_Y, text, COLOR_WHITE, COLOR_BLACK, TEXT_SCALE);
+    fbDrawText(TEXT_X, TEXT_Y, text, COLOR_WHITE, COLOR_BLACK, TEXT_SCALE);
+}
+
+// ── uptime ──
+
+const UPTIME_SCALE: i32 = 2;
+const UPTIME_CHARS: i32 = 5;
+const UPTIME_CHAR_W = 6 * UPTIME_SCALE;
+const UPTIME_W = UPTIME_CHARS * UPTIME_CHAR_W;
+const UPTIME_H = 7 * UPTIME_SCALE;
+const UPTIME_X: i32 = @as(i32, @intCast(LCD_W)) - UPTIME_W - 4;
+const UPTIME_Y: i32 = 4;
+
+fn formatUptime(buf: *[5]u8, seconds: u32) void {
+    const mm = (seconds / 60) % 100;
+    const ss = seconds % 60;
+    buf[0] = '0' + @as(u8, @intCast(mm / 10));
+    buf[1] = '0' + @as(u8, @intCast(mm % 10));
+    buf[2] = ':';
+    buf[3] = '0' + @as(u8, @intCast(ss / 10));
+    buf[4] = '0' + @as(u8, @intCast(ss % 10));
+}
+
+fn fbDrawUptime(seconds: u32) void {
+    var buf: [5]u8 = undefined;
+    formatUptime(&buf, seconds);
+    fbFillRect(UPTIME_X, UPTIME_Y, UPTIME_W, UPTIME_H, COLOR_BLACK);
+    fbDrawText(UPTIME_X, UPTIME_Y, &buf, COLOR_WHITE, COLOR_BLACK, UPTIME_SCALE);
 }
 
 // ── entry ──
 
-export fn zig_esp_main() callconv(.c) void {
-    _ = esp_rom_printf("lcd_battery: starting (pure zig)\n");
+var g_spi_bus: esp_lcd.spi.Bus = undefined;
+var g_io: esp_lcd.spi.PanelIo = undefined;
+var g_panel: esp_lcd.Panel = undefined;
 
-    i2c.masterInit(b.i2c.port, b.i2c.sda, b.i2c.scl, b.i2c.freq_hz) catch {
+export fn zig_esp_main() callconv(.c) void {
+    _ = esp_rom_printf("lcd_battery: starting\n");
+
+    const fb_ptr = heap.capsMalloc(FB_PIXELS * 2, MALLOC_CAP_DMA) orelse {
+        _ = esp_rom_printf("FATAL: framebuffer alloc failed (%u bytes)\n", @as(c_uint, FB_PIXELS * 2));
+        newlib.abort();
+    };
+    fb = @ptrCast(@alignCast(fb_ptr));
+    _ = esp_rom_printf("lcd_battery: framebuffer allocated (%u bytes)\n", @as(c_uint, FB_PIXELS * 2));
+
+    g_i2c = i2c.I2cMaster.init(.{
+        .port = b.i2c.port,
+        .sda = b.i2c.sda,
+        .scl = b.i2c.scl,
+        .freq_hz = b.i2c.freq_hz,
+    }) catch {
         _ = esp_rom_printf("FATAL: I2C init failed\n");
         newlib.abort();
     };
     pca9557_write_byte(b.lcd_cs_expander.output_port_reg, b.lcd_cs_expander.init_output);
     pca9557_write_byte(b.lcd_cs_expander.config_port_reg, b.lcd_cs_expander.init_config);
 
-    ledc.backlightInit(b.lcd.backlight, 0, 5000, true) catch {
-        _ = esp_rom_printf("FATAL: LEDC init failed\n");
+    ledc.configureTimer(.{
+        .speed_mode = 0,
+        .timer_num = 0,
+        .duty_resolution_bits = 10,
+        .freq_hz = 5000,
+        .clk_cfg = ledc.clk_cfg_auto,
+    }) catch {
+        _ = esp_rom_printf("FATAL: LEDC timer config failed\n");
+        newlib.abort();
+    };
+    ledc.configureChannel(.{
+        .gpio = b.lcd.backlight,
+        .speed_mode = 0,
+        .channel = 0,
+        .timer_num = 0,
+        .invert = true,
+    }) catch {
+        _ = esp_rom_printf("FATAL: LEDC channel config failed\n");
         newlib.abort();
     };
 
     const max_transfer: usize = @intCast(b.lcd.h_res * b.lcd.v_res * 2);
-    var bus = esp_lcd.spi.Bus.init(.{
+    g_spi_bus = esp_lcd.spi.Bus.init(.{
         .host_id = b.lcd.spi_host,
         .sclk_io_num = b.lcd.sclk,
         .mosi_io_num = b.lcd.mosi,
@@ -220,7 +300,7 @@ export fn zig_esp_main() callconv(.c) void {
         newlib.abort();
     };
 
-    var io = esp_lcd.spi.PanelIo.init(&bus, .{
+    g_io = esp_lcd.spi.PanelIo.init(&g_spi_bus, .{
         .cs_io_num = b.lcd.cs,
         .dc_io_num = b.lcd.dc,
         .pclk_hz = b.lcd.pclk_hz,
@@ -230,7 +310,7 @@ export fn zig_esp_main() callconv(.c) void {
         newlib.abort();
     };
 
-    var panel = esp_lcd.driver.create(esp_lcd.driver.st7789, &io, .{
+    g_panel = esp_lcd.driver.create(esp_lcd.driver.st7789, &g_io, .{
         .reset_gpio_num = b.lcd.rst,
         .bits_per_pixel = b.lcd.bpp,
     }) catch {
@@ -238,15 +318,15 @@ export fn zig_esp_main() callconv(.c) void {
         newlib.abort();
     };
 
-    lcdCheck(panel.reset());
+    lcdCheck(g_panel.reset());
     pca9557_set_output(b.lcd_cs_expander.cs_bit, false);
-    lcdCheck(panel.init());
-    lcdCheck(panel.invertColor(b.lcd.invert_color));
-    lcdCheck(panel.swapXY(b.lcd.swap_xy));
-    lcdCheck(panel.mirror(b.lcd.mirror_x, b.lcd.mirror_y));
-    lcdCheck(panel.setDisplayEnabled(true));
+    lcdCheck(g_panel.init());
+    lcdCheck(g_panel.invertColor(b.lcd.invert_color));
+    lcdCheck(g_panel.swapXY(b.lcd.swap_xy));
+    lcdCheck(g_panel.mirror(b.lcd.mirror_x, b.lcd.mirror_y));
+    lcdCheck(g_panel.setDisplayEnabled(true));
 
-    ledc.setDutyPercent(0, 100) catch |err| {
+    ledc.setDutyPercentWithResolution(0, 0, 10, 100) catch |err| {
         _ = esp_rom_printf("WARN: LEDC set duty failed: %d\n", @intFromError(err));
     };
 
@@ -258,9 +338,11 @@ export fn zig_esp_main() callconv(.c) void {
     _ = esp_rom_printf("lcd_battery: init complete\n");
     _ = esp_rom_printf("heap: free=%u min_free=%u\n", heap.freeHeapSize(), heap.minimumFreeHeapSize());
 
-    drawBatteryShell(&panel);
+    drawBatteryShell();
+    flush(&g_panel);
 
     var prev_percent: u8 = 0xFF;
+    var uptime: u32 = 0;
 
     while (true) {
         var battery_mv: u32 = b.battery_adc.empty_mv;
@@ -274,11 +356,16 @@ export fn zig_esp_main() callconv(.c) void {
         const percent = batteryPercent(battery_mv);
 
         if (percent != prev_percent) {
-            drawBatteryFill(&panel, percent);
+            drawBatteryFill(percent);
             prev_percent = percent;
         }
 
-        _ = esp_rom_printf("lcd_battery: percent=%u mv=%u\n", @as(c_uint, percent), @as(c_uint, battery_mv));
-        freertos.delay(2000);
+        fbDrawUptime(uptime);
+        uptime += 1;
+
+        flush(&g_panel);
+
+        _ = esp_rom_printf("lcd_battery: percent=%u mv=%u uptime=%u\n", @as(c_uint, percent), @as(c_uint, battery_mv), uptime);
+        freertos.delay(100);
     }
 }

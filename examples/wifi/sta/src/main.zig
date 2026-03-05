@@ -1,4 +1,4 @@
-const board = @import("board_pins");
+const board = @import("board");
 const esp_wifi = @import("esp_wifi");
 const rom = @import("esp_rom");
 const newlib = @import("newlib");
