@@ -287,7 +287,7 @@ pub fn build(b: *std.Build) void {
     const board_file = b.option([]const u8, "board", "Board profile") orelse "board/esp32s3.zig";
     const build_dir = b.option([]const u8, "build_dir", "Build directory") orelse "build";
     const runtime = espz.workflow.externalRuntimeOptionsFromBuild(b);
-    _ = espz.registerExternalExample(b, .{
+    _ = espz.registerApp(b, .{
         .target = target, .optimize = optimize,
         .app_name = "<module_name>_compile_test",
         .board_file = board_file, .build_dir = build_dir,
@@ -328,7 +328,7 @@ pub fn build(b: *std.Build) void {
     const board_file = b.option([]const u8, "board", "Board profile") orelse "board/esp32s3_szp.zig";
     const build_dir = b.option([]const u8, "build_dir", "Build directory") orelse "build";
     const runtime = espz.workflow.externalRuntimeOptionsFromBuild(b);
-    _ = espz.registerExternalExample(b, .{
+    _ = espz.registerApp(b, .{
         .target = target, .optimize = optimize,
         .app_name = "my_app", .board_file = board_file,
         .build_dir = build_dir, .runtime = runtime,

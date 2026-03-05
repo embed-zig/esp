@@ -1,7 +1,7 @@
 const std = @import("std");
 const espz = @import("espz");
 
-const default_board_file = "board/esp32s3_devkit.zig";
+const default_board_file = "board/esp32s3_szp.zig";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     _ = espz.registerApp(b, .{
         .target = target,
         .optimize = optimize,
-        .app_name = "bt_vhci_smoke",
+        .app_name = "aec_7210_8311",
         .board_file = board_file,
         .build_dir = build_dir,
         .compile_check_with_idf_module = false,

@@ -30,7 +30,7 @@ zig build flash-monitor \
 
 ```text
 .
-├── build.zig              # Root package: exports workflow + registerExternalExample
+├── build.zig              # Root package: exports workflow + registerApp
 ├── src/
 │   ├── component.zig      # Firmware runtime entry (re-exports modules with Zig API)
 │   ├── cmake.zig          # CMake build pipeline (aggregates embedded C shims)
@@ -80,7 +80,7 @@ A firmware project consists of three files:
 
 | File | Purpose |
 |---|---|
-| `build.zig` | Calls `espz.registerExternalExample()` — no CMake, no boilerplate |
+| `build.zig` | Calls `espz.registerApp()` — no CMake, no boilerplate |
 | `board/<name>.zig` | `pub const config` (sdkconfig) + `pub const pins` (hardware pin layout) |
 | `src/main.zig` | Pure Zig firmware — `@import("esp_lcd")` for APIs, `@import("board_pins")` for pin config |
 

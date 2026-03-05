@@ -3,7 +3,7 @@ const idf_workflow = @import("idf/build/workflow.zig");
 
 pub const workflow = idf_workflow;
 
-pub const ExternalExampleOptions = struct {
+pub const AppOptions = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 
@@ -12,13 +12,14 @@ pub const ExternalExampleOptions = struct {
     build_dir: []const u8 = "build",
     compile_check_with_idf_module: bool = true,
     unprefixed_step_profile: idf_workflow.UnprefixedStepProfile = .runtime_only,
+    extra_zig_modules: []const idf_workflow.ExtraZigModule = &.{},
 
     runtime: idf_workflow.ExternalRuntimeOptions,
 };
 
-pub fn registerExternalExample(
+pub fn registerApp(
     b: *std.Build,
-    options: ExternalExampleOptions,
+    options: AppOptions,
 ) idf_workflow.Registration {
     const espz_dep = b.dependency("espz", .{});
 
@@ -38,6 +39,7 @@ pub fn registerExternalExample(
         .expose_prefixed_steps = false,
         .expose_unprefixed_steps = true,
         .unprefixed_step_profile = options.unprefixed_step_profile,
+        .extra_zig_modules = options.extra_zig_modules,
     });
 }
 

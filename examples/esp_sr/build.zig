@@ -15,10 +15,11 @@ pub fn build(b: *std.Build) void {
     _ = espz.registerApp(b, .{
         .target = target,
         .optimize = optimize,
-        .app_name = "bt_vhci_smoke",
+        .app_name = "esp_sr",
         .board_file = board_file,
         .build_dir = build_dir,
         .compile_check_with_idf_module = false,
+        .unprefixed_step_profile = .full,
         .runtime = runtime,
     });
 }

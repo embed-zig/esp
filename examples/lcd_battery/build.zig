@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
 
     const runtime = espz.workflow.externalRuntimeOptionsFromBuild(b);
 
-    _ = espz.registerExternalExample(b, .{
+    _ = espz.registerApp(b, .{
         .target = target,
         .optimize = optimize,
         .app_name = "lcd_battery",
