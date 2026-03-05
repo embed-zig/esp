@@ -1,0 +1,19 @@
+.{
+    .name = .link_attr,
+    .version = "0.1.0",
+    .fingerprint = 0xb539b1bd2e3c5cc6,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .espz = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "board",
+        "README.md",
+        ".gitignore",
+    },
+}
