@@ -88,6 +88,12 @@ pub const RegisterOptions = struct {
     expose_unprefixed_steps: bool = false,
 };
 
+pub const ExtraZigModule = struct {
+    name: []const u8,
+    path: std.Build.LazyPath,
+    deps: []const []const u8 = &.{},
+};
+
 pub const Registration = struct {
     executable: ?*std.Build.Step.Compile,
     build_step: *std.Build.Step,
@@ -120,6 +126,7 @@ pub const RegisterExternalOptions = struct {
     espz_root: ?std.Build.LazyPath = null,
 
     extra_component_dirs: []const std.Build.LazyPath = &.{},
+    extra_zig_modules: []const ExtraZigModule = &.{},
 
     link_zig_entry_library: bool = false,
     zig_target: []const u8 = "xtensa-freestanding-none",
@@ -411,6 +418,7 @@ pub fn registerExternalApp(b: *std.Build, options: RegisterExternalOptions) Regi
             options.espz_root,
             options.board_file,
             options.expose_prefixed_steps,
+            options.extra_zig_modules,
         )
     else
         null;
@@ -675,12 +683,19 @@ fn registerSdkconfigStep(
         .optimize = .ReleaseSafe,
     });
 
+    const utils_module = b.createModule(.{
+        .root_source_file = espzPath(b, espz_root, "src/utils/root.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+    });
+
     const sdkconfig_modules = b.createModule(.{
         .root_source_file = espzPath(b, espz_root, "src/sdkconfig.zig"),
         .target = b.graph.host,
         .optimize = .ReleaseSafe,
         .imports = &.{
             .{ .name = "idf_sdkconfig", .module = idf_sdkconfig },
+            .{ .name = "utils", .module = utils_module },
         },
     });
 
@@ -793,6 +808,7 @@ fn registerExternalZigLibraryStep(
     espz_root_for_zig_deps: ?std.Build.LazyPath,
     board_file_for_zig_deps: ?[]const u8,
     expose_named_step: bool,
+    extra_zig_modules: []const ExtraZigModule,
 ) *std.Build.Step {
     const cmd = b.addSystemCommand(&.{zig_bin orelse "zig"});
     cmd.setCwd(b.path(app_root));
@@ -804,40 +820,15 @@ fn registerExternalZigLibraryStep(
     cmd.addArg(zigOptimizeFlag(optimize));
     cmd.addArg(b.fmt("-femit-bin={s}", .{output_file}));
 
-    if (espz_root_for_zig_deps != null or board_file_for_zig_deps != null) {
+    if (espz_root_for_zig_deps != null or board_file_for_zig_deps != null or extra_zig_modules.len > 0) {
         if (board_file_for_zig_deps != null) {
-            cmd.addArgs(&.{ "--dep", "board_pins" });
+            cmd.addArgs(&.{ "--dep", "board" });
         }
-        if (espz_root_for_zig_deps != null) {
-            cmd.addArgs(&.{ "--dep", "esp_lcd" });
-            cmd.addArgs(&.{ "--dep", "esp_wifi" });
-            cmd.addArgs(&.{ "--dep", "bt" });
-            cmd.addArgs(&.{ "--dep", "freertos" });
-            cmd.addArgs(&.{ "--dep", "esp_rom" });
-            cmd.addArgs(&.{ "--dep", "newlib" });
-            cmd.addArgs(&.{ "--dep", "nvs_flash" });
-            cmd.addArgs(&.{ "--dep", "heap" });
-            cmd.addArgs(&.{ "--dep", "esp_driver_i2c" });
-            cmd.addArgs(&.{ "--dep", "esp_driver_i2s" });
-            cmd.addArgs(&.{ "--dep", "esp_driver_ledc" });
-            cmd.addArgs(&.{ "--dep", "esp_driver_spi" });
-            cmd.addArgs(&.{ "--dep", "esp_driver_gpio" });
-            cmd.addArgs(&.{ "--dep", "esp_adc" });
-            cmd.addArgs(&.{ "--dep", "esp_sr" });
-            cmd.addArgs(&.{ "--dep", "led_strip" });
-            cmd.addArgs(&.{ "--dep", "app_metadata" });
-            cmd.addArgs(&.{ "--dep", "esp_cpu" });
-            cmd.addArgs(&.{ "--dep", "esp_driver_uart" });
-            cmd.addArgs(&.{ "--dep", "esp_netif" });
-            cmd.addArgs(&.{ "--dep", "esp_random" });
-            cmd.addArgs(&.{ "--dep", "esp_timer" });
-            cmd.addArgs(&.{ "--dep", "lwip" });
-            cmd.addArgs(&.{ "--dep", "mbedtls" });
-            cmd.addArgs(&.{ "--dep", "utils" });
-        }
+        addEspzDepArgs(cmd, espz_root_for_zig_deps != null, extra_zig_modules);
         cmd.addArg(b.fmt("-Mroot={s}", .{source_file}));
         if (board_file_for_zig_deps) |bf| {
-            cmd.addArg(b.fmt("-Mboard_pins={s}", .{bf}));
+            addEspzDepArgs(cmd, espz_root_for_zig_deps != null, extra_zig_modules);
+            cmd.addArg(b.fmt("-Mboard={s}", .{bf}));
         }
         if (espz_root_for_zig_deps) |root| {
             cmd.addPrefixedFileArg("-Mesp_lcd=", root.path(b, "src/esp_lcd/root.zig"));
@@ -875,6 +866,12 @@ fn registerExternalZigLibraryStep(
 
             cmd.addPrefixedFileArg("-Mutils=", root.path(b, "src/utils/root.zig"));
         }
+        for (extra_zig_modules) |mod| {
+            for (mod.deps) |dep| {
+                cmd.addArgs(&.{ "--dep", dep });
+            }
+            cmd.addPrefixedFileArg(b.fmt("-M{s}=", .{mod.name}), mod.path);
+        }
     } else {
         cmd.addArg(source_file);
     }
@@ -888,6 +885,45 @@ fn registerExternalZigLibraryStep(
         return step;
     }
     return &cmd.step;
+}
+
+const espz_module_names = [_][]const u8{
+    "esp_lcd",
+    "esp_wifi",
+    "bt",
+    "freertos",
+    "esp_rom",
+    "newlib",
+    "nvs_flash",
+    "heap",
+    "esp_driver_i2c",
+    "esp_driver_i2s",
+    "esp_driver_ledc",
+    "esp_driver_spi",
+    "esp_driver_gpio",
+    "esp_adc",
+    "esp_sr",
+    "led_strip",
+    "app_metadata",
+    "esp_cpu",
+    "esp_driver_uart",
+    "esp_netif",
+    "esp_random",
+    "esp_timer",
+    "lwip",
+    "mbedtls",
+    "utils",
+};
+
+fn addEspzDepArgs(cmd: *std.Build.Step.Run, has_espz: bool, extra_zig_modules: []const ExtraZigModule) void {
+    if (has_espz) {
+        for (&espz_module_names) |name| {
+            cmd.addArgs(&.{ "--dep", name });
+        }
+    }
+    for (extra_zig_modules) |mod| {
+        cmd.addArgs(&.{ "--dep", mod.name });
+    }
 }
 
 fn zigOptimizeFlag(optimize: std.builtin.OptimizeMode) []const u8 {
