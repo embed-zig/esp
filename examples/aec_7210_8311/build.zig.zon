@@ -1,0 +1,17 @@
+.{
+    .name = .aec_7210_8311,
+    .version = "0.1.0",
+    .fingerprint = 0x546df7f8ca3e012f,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .esp = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "board",
+    },
+}
