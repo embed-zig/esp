@@ -47,22 +47,7 @@ zig build flash-monitor -Dboard=board/esp32s3_devkit.zig -Dport=/dev/cu.usbmodem
 
 **Test date**: 2026-03-05 | **Board**: ESP32-S3 SZP (16MB flash, 8MB PSRAM, 240MHz)
 
-### Binary size
-
-| Component | Size |
-|-----------|------|
-| bootloader | 21,008 bytes |
-| partition-table | 3,072 bytes |
-| esp_sr.bin | 536,368 bytes |
-
-### Memory layout (idf_size)
-
-| Section | Used | Total | Used % |
-|---------|------|-------|--------|
-| Flash Code (.text) | 210,270 | — | — |
-| Flash Data (.rodata) | 246,656 | — | — |
-| IRAM (.text + .vectors) | 16,383 | 16,384 | 99.99% |
-| DRAM (.text + .data + .bss) | 65,095 | 341,760 | 19.05% |
+AEC config: `filter_length=4`, `mode=voip_high_perf`, `channel_num=1`, `sample_rate=16000`.
 
 ### Runtime memory (PSRAM / DRAM)
 
@@ -70,11 +55,11 @@ zig build flash-monitor -Dboard=board/esp32s3_devkit.zig -Dport=/dev/cu.usbmodem
 |-------|-----------|------------|
 | Boot | — | — |
 | Audio buffers (5 x 48000 samples) | 0 | 481,300 |
-| AEC init | 0 | 96,844 |
+| AEC init (filter_length=4) | 28,604 | 68,240 |
 | NS init | 0 | 33,796 |
 | AGC init | 0 | 676 |
-| **Total algorithm init** | **0** | **131,316** |
-| **Total from boot** | **0** | **612,616** |
+| **Total algorithm init** | **28,604** | **102,712** |
+| **Total from boot** | **28,604** | **584,012** |
 
 Boot free memory: PSRAM 8,386,148 / 8,388,608 bytes, DRAM 349,207 / 429,575 bytes.
 
@@ -110,11 +95,13 @@ Boot free memory: PSRAM 8,386,148 / 8,388,608 bytes, DRAM 349,207 / 429,575 byte
   'near_end': loaded 48000 samples from embedded data (@embedFile)
   far_end  RMS: 8858
   near_end RMS: 8485
+  far_end  first 4: 0 2326 4535 6522
+  near_end first 4: 0 4592 8485 11086
 
 [3] Initializing AEC...
 --- Memory delta: AEC init ---
-  DRAM used:  0 bytes
-  PSRAM used: 96844 bytes
+  DRAM used:  28604 bytes
+  PSRAM used: 68240 bytes
   AEC chunk size: 256 samples
 
 [4] Initializing NS...
@@ -129,18 +116,18 @@ Boot free memory: PSRAM 8,386,148 / 8,388,608 bytes, DRAM 349,207 / 429,575 byte
 
 === Memory: after all init ===
   Total free:     8090708 bytes
-  Internal free:  341703 bytes
-  PSRAM:          7773532 / 8388608 bytes free
-  Internal(caps): 349207 / 429575 bytes free
+  Internal free:  313099 bytes
+  PSRAM:          7802136 / 8388608 bytes free
+  Internal(caps): 320603 / 429575 bytes free
 --- Memory delta: total algorithm init ---
-  DRAM used:  0 bytes
-  PSRAM used: 131316 bytes
+  DRAM used:  28604 bytes
+  PSRAM used: 102712 bytes
 
 ========================================
   Test A: aec(far_end, far_end)
   Input = ref => expect near-zero output
 ========================================
-  Frames: 187 in 1140 ms
+  Frames: 187 in 1020 ms
   Input  RMS:  8858  peak: 11042
   Output RMS:  1128  peak: 21846
   Suppression: 88%
@@ -149,7 +136,7 @@ Boot free memory: PSRAM 8,386,148 / 8,388,608 bytes, DRAM 349,207 / 429,575 byte
   Test B: aec(near_end_sine, far_end_melody)
   Near=1kHz sine, Ref=melody => preserve sine
 ========================================
-  Frames: 187 in 1174 ms
+  Frames: 187 in 1052 ms
   near_end input  RMS: 8485  peak: 12000
   AEC output      RMS: 5034  peak: 21846
   Sine sign consistency (1-2s): 13466/14000 (96%)
@@ -170,12 +157,12 @@ Boot free memory: PSRAM 8,386,148 / 8,388,608 bytes, DRAM 349,207 / 429,575 byte
 
 === Memory: final ===
   Total free:     8090708 bytes
-  Internal free:  341703 bytes
-  PSRAM:          7773532 / 8388608 bytes free
-  Internal(caps): 349207 / 429575 bytes free
+  Internal free:  313099 bytes
+  PSRAM:          7802136 / 8388608 bytes free
+  Internal(caps): 320603 / 429575 bytes free
 --- Memory delta: total from boot ---
-  DRAM used:  0 bytes
-  PSRAM used: 612616 bytes
+  DRAM used:  28604 bytes
+  PSRAM used: 584012 bytes
 
 ========================================
   ESP-SR benchmark complete.

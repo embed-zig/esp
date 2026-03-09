@@ -1,7 +1,9 @@
 const std = @import("std");
-const rom = @import("esp_rom");
-const heap = @import("heap");
-const esp_sr = @import("esp_sr");
+const esp = @import("esp");
+const esp_component = esp.component;
+const rom = esp_component.esp_rom;
+const heap = esp_component.heap;
+const esp_sr = esp_component.esp_sr;
 const audio = @import("audio.zig");
 
 const printf = rom.esp_rom_printf;
@@ -125,7 +127,7 @@ pub fn run() void {
 
     var aec_inst = esp_sr.Aec.init(.{
         .sample_rate = @intCast(audio.SAMPLE_RATE),
-        .frame_length = AEC_FRAME_LEN,
+        .filter_length = 4,
         .channel_num = 1,
         .mode = .voip_high_perf,
     }) catch {
@@ -203,7 +205,7 @@ pub fn run() void {
     aec_inst.deinit();
     aec_inst = esp_sr.Aec.init(.{
         .sample_rate = @intCast(audio.SAMPLE_RATE),
-        .frame_length = AEC_FRAME_LEN,
+        .filter_length = 4,
         .channel_num = 1,
         .mode = .voip_high_perf,
     }) catch {

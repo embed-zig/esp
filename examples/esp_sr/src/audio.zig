@@ -1,5 +1,7 @@
 const std = @import("std");
-const rom = @import("esp_rom");
+const esp = @import("esp");
+const esp_component = esp.component;
+const rom = esp_component.esp_rom;
 
 const printf = rom.esp_rom_printf;
 

@@ -1,9 +1,11 @@
-const bt = @import("bt");
-const freertos = @import("freertos");
-const esp_rom = @import("esp_rom");
-const nvs_flash = @import("nvs_flash");
-const newlib = @import("newlib");
-const heap = @import("heap");
+const esp = @import("esp");
+const esp_component = esp.component;
+const bt = esp_component.bt;
+const freertos = esp_component.freertos;
+const esp_rom = esp_component.esp_rom;
+const nvs_flash = esp_component.nvs_flash;
+const newlib = esp_component.newlib;
+const heap = esp_component.heap;
 
 export fn zig_esp_main() callconv(.c) void {
     run() catch {

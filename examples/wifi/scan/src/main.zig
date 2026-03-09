@@ -1,7 +1,9 @@
-const esp_wifi = @import("esp_wifi");
-const rom = @import("esp_rom");
-const newlib = @import("newlib");
-const freertos = @import("freertos");
+const esp = @import("esp");
+const esp_component = esp.component;
+const esp_wifi = esp_component.esp_wifi;
+const rom = esp_component.esp_rom;
+const newlib = esp_component.newlib;
+const freertos = esp_component.freertos;
 
 const WiFi = esp_wifi.WiFi;
 

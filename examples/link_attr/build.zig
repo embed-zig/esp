@@ -1,25 +1,30 @@
 const std = @import("std");
-const espz = @import("espz");
+const esp = @import("esp");
 
-const default_board_file = "board/esp32s3_devkit.zig";
+const default_build_config = "board/esp32s3_devkit.zig";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const board_file = b.option([]const u8, "board", "Board sdkconfig profile Zig file path") orelse default_board_file;
+    const deprecated_board = b.option([]const u8, "board", "DEPRECATED: use -Dbuild_config instead");
+    const build_config = b.option([]const u8, "build_config", "Board build config file path") orelse deprecated_board orelse default_build_config;
+    const bsp_file = b.option([]const u8, "bsp", "Board BSP file (optional, enables @import(\"esp\") in board)");
     const build_dir = b.option([]const u8, "build_dir", "Directory for all generated workflow files") orelse "build";
 
-    const runtime = espz.workflow.externalRuntimeOptionsFromBuild(b);
+    if (deprecated_board != null) {
+        std.log.warn("-Dboard is deprecated, use -Dbuild_config instead", .{});
+    }
 
-    _ = espz.registerApp(b, .{
+    const runtime = esp.idf.build.externalRuntimeOptionsFromBuild(b);
+
+    _ = esp.idf.build.registerApp(b, .{
         .target = target,
         .optimize = optimize,
         .app_name = "link_attr",
-        .board_file = board_file,
+        .build_config = build_config,
+        .bsp_file = bsp_file,
         .build_dir = build_dir,
-        .compile_check_with_idf_module = false,
-        .unprefixed_step_profile = .full,
         .runtime = runtime,
     });
 }

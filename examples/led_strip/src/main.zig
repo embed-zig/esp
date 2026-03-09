@@ -1,6 +1,8 @@
-const rom = @import("esp_rom");
-const freertos = @import("freertos");
-const led = @import("led_strip");
+const esp = @import("esp");
+const esp_component = esp.component;
+const rom = esp_component.esp_rom;
+const freertos = esp_component.freertos;
+const led = esp_component.led_strip;
 const board = @import("board");
 
 const strip_pins = board.pins.led_strip;

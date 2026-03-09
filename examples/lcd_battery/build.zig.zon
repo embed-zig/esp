@@ -4,7 +4,7 @@
     .fingerprint = 0xcb521072dc338aa4,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
-        .espz = .{
+        .esp = .{
             .path = "../..",
         },
     },

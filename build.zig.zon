@@ -1,14 +1,17 @@
 .{
-    .name = .espz,
+    .name = .esp,
     .version = "0.1.0",
-    .fingerprint = 0xe4e4eff0891a4483,
+    .fingerprint = 0xe54a8bd08ffdb3ce,
     .minimum_zig_version = "0.15.2",
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "idf",
         "src",
         "examples",
-        "cmake",
+    },
+    .dependencies = .{
+        .embed_zig = .{
+            .path = "../embed-zig-ag1",
+        },
     },
 }
