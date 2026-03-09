@@ -1,0 +1,9 @@
+pub const gpio = @import("gpio.zig");
+pub const setDirection = gpio.setDirection;
+pub const setLevel = gpio.setLevel;
+pub const getLevel = gpio.getLevel;
+pub const setPullMode = gpio.setPullMode;
+pub const resetPin = gpio.resetPin;
+pub const GpioMode = gpio.GpioMode;
+pub const GpioPull = gpio.GpioPull;
+pub const Error = gpio.Error;
