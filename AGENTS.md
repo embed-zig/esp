@@ -1,388 +1,184 @@
 # AGENTS.md
-Agent guide for ESPZ (Zig-first ESP-IDF binding project).
+Agent guide for ESPZ.
 
-## 0) Rule sources checked
-- `.cursor/rules/`: not present
-- `.cursorrules`: not present
-- `.github/copilot-instructions.md`: not present
-- Therefore this file + in-repo conventions are the rule source.
+## Table Of Contents
+- [Project rules](#project-rules)
+- [Environment and commands](#environment-and-commands)
+- [Code conventions](#code-conventions)
+- [Adding a component binding](#adding-a-component-binding)
+- [Writing an example](#writing-an-example)
+- [Change checklist](#change-checklist)
+- [Non-goals](#non-goals)
 
-## 1) Workflow constraints
-- Local-first workflow (no mandatory PR gate, no mandatory hosted CI gate).
-- Do not introduce Bazel files/commands/workflows.
-- Build orchestration must stay in `build.zig` + `idf/build/workflow.zig`.
-- Firmware runtime entry: `src/component.zig`; sdkconfig entry: `src/sdkconfig.zig`; CMake/embedded entry: `src/cmake.zig`.
-- Example layout: `examples/<app>/`.
-- Most modules under `src/` should map **1:1** to ESP-IDF components (keep naming and boundaries aligned).
-- When adding/refactoring modules, keep component mapping explicit and update exports in `src/component.zig` and `src/cmake.zig`.
+## Project rules
 
-## 2) Environment prerequisites
-- Zig toolchain: use the Xtensa-capable fork from [embed-zig/esp-zig-bootstrap](https://github.com/embed-zig/esp-zig-bootstrap) (`>= 0.14.0`). Upstream Zig does not support Xtensa.
-- ESP-IDF env is required for `*-configure/*-idf-build/*-flash/*-monitor`.
-- **Recommended** (no manual `source` needed):
+- This repo is local-first. Do not assume PR gates or hosted CI.
+- Do not introduce Bazel.
+- Keep build orchestration in `build.zig` and `src/idf/build/`.
+- Keep `src/component/<module>/` aligned 1:1 with ESP-IDF component boundaries.
+- When adding or moving a component, update:
+  - `src/esp_mod.zig`
+  - `src/idf/cmake/component.zig`
+  - `src/idf/sdkconfig/component.zig`
+- Example apps live in `examples/<app>/`.
+
+## Environment and commands
+
+Use the Xtensa-capable Zig fork from
+[embed-zig/esp-zig-bootstrap](https://github.com/embed-zig/esp-zig-bootstrap).
+
+Recommended build style:
+
 ```bash
-zig build idf-build -Desp_idf=/path/to/esp-idf
+zig build hello_world-idf-build -Desp_idf=/path/to/esp-idf
 ```
-  The workflow automatically activates the ESP-IDF environment via `idf/build/idf_env_wrapper.sh`.
-- Alternative (manual activation):
+
+Manual environment is also fine:
+
 ```bash
 export ESP_IDF=/path/to/esp-idf
 source "$ESP_IDF/export.sh"
-zig build idf-build
 ```
-- Optional explicit idf.py: `-Didf_py=/path/to/esp-idf/tools/idf.py`.
 
-## 3) Build commands
-Discover steps:
-```bash
-zig build -l
-```
-Core:
+Useful commands:
+
 ```bash
 zig build
 zig build test
-```
-Build one example:
-```bash
+zig build -l
 zig build hello_world
 zig build wifi_scan
-zig build lcd_battery
 zig build bt_vhci_smoke
 ```
-Per-example workflow:
+
+Common workflow:
+
 ```bash
-zig build <app>-sdkconfig
-zig build <app>-gen-main-c
-zig build <app>-configure
-zig build <app>-idf-build
-zig build <app>-flash -Dport=/dev/cu.xxx
-zig build <app>-monitor -Dport=/dev/cu.xxx
-zig build <app>-flash-monitor -Dport=/dev/cu.xxx
+zig build <app>-configure -Desp_idf=/path/to/esp-idf
+zig build <app>-idf-build -Desp_idf=/path/to/esp-idf
+zig build <app>-flash -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
+zig build <app>-monitor -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
+zig build <app>-flash-monitor -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
 ```
-Useful options:
-- `-Dboard=<name>` (default `esp32s3-devkit`)
-- `-Dgenerated_dir=<dir>`
-- `-Dfinal_sdkconfig=<path>`
+
+Common options:
+
+- `-Dbuild_config=<path>`
+- `-Dbsp=<path>`
+- `-Dbuild_dir=<dir>`
+- `-Desp_idf=<path>`
 - `-Didf_py=<path>`
-- `-Dchip=<chip>`
-- `-Dport=<serial-port>`
-- `-Dbaud=<baudrate>`
-- `-Dtimeout=<seconds>` (auto-exit monitor after N seconds)
+- `-Dport=<serial>`
+- `-Dbaud=<rate>`
+- `-Dtimeout=<seconds>`
 
-## 4) Verification commands
-Run broad guardrails:
-```bash
-zig build
-```
-Flash and verify on hardware:
-```bash
-cd examples/hello_world
-zig build flash-monitor -Dboard=board/esp32s3_devkit.zig -Dport=/dev/cu.xxx -Desp_idf=$ESP_IDF -Dtimeout=15
-```
-SDK config coverage check (when config/schema changes):
-```bash
-zig build hello_world-sdkconfig-report -Dboard=esp32s3-devkit -Didf_py=/path/to/idf.py
-```
+## Code conventions
 
-## 5) Lint / format
-Primary formatter is Zig fmt.
-```bash
-zig fmt build.zig src idf test examples
-zig fmt --check build.zig src idf test examples
-zig fmt --ast-check build.zig src idf test examples
-```
-Notes:
-- No enforced repo-level `.clang-format` or ruff config currently.
-- For C/Python edits, follow existing local style and keep diffs minimal.
+### Zig
 
-## 6) Monitor behavior in non-interactive sessions
-- `idf_monitor` often requires TTY.
-- Workflow routes monitor via `idf/build/pty_monitor.py`.
-- Keep monitor wiring in `idf/build/workflow.zig` (`monitor/flash-monitor`).
-
-## 7) Code style guidelines
-
-### 7.1 Zig imports and module boundaries
-- Imports at file top; use `const std = @import("std");` first when used.
-- Prefer explicit aliases (e.g. `const sdkconfig = @import("idf_sdkconfig");`).
-- One public entry per module directory (`root.zig` re-export pattern).
-- Avoid `@import` paths that escape module roots.
-
-### 7.2 Zig formatting and naming
+- Put imports at the top. Use `const std = @import("std");` first when needed.
 - Run `zig fmt` after edits.
-- Keep trailing commas in multiline literals/calls.
-- Export with `pub const`; use `const` for internals.
-- Naming: functions `lowerCamelCase`, types/enums `PascalCase`, files `snake_case.zig`.
+- Use `lowerCamelCase` for functions, `PascalCase` for types, `snake_case.zig` for files.
+- Prefer explicit integer widths in config and schema code.
+- Use `!T` and `try`; do not silently swallow errors.
+- Use `@compileError` for invalid config or schema contracts.
 
-### 7.3 Zig types and safety
-- Prefer explicit widths in schema/config code (`u16`, `u32`, `i64`).
-- Use `[]const u8` for text APIs.
-- Use `@as(...)` when literal coercion intent matters.
-- Use `@compileError` for invalid schema/override contracts.
+### Component layout
 
-### 7.4 Zig error handling and tests
-- Return `!T`; propagate with `try`; do not silently swallow failures.
-- Keep tests deterministic with `std.testing.expect*`.
-- Update/add tests in the same change when behavior changes.
+- `esp_mod.zig` is runtime API only and should only re-export implementation files.
+- `idf_mod.zig` holds build metadata and re-exports `sdkconfig.zig`.
+- Keep `c_helper.c` shims thin: parameter conversion plus one ESP-IDF call.
+- Prefix exported shim functions with `espz_`.
 
-### 7.5 C runtime style (ESP-IDF)
-- Include order: std C headers -> ESP-IDF headers -> local headers.
-- Use `static const char *TAG = "...";` for logging.
-- Prefer `ESP_ERROR_CHECK` / `ESP_RETURN_ON_ERROR`.
-- Guard optional behavior with `#if defined(CONFIG_...)` checks.
-- Keep explicit init/deinit lifecycle for resources.
-- Do not ship TODO stubs/fake behavior in exposed runtime paths.
+### Boards and examples
 
-### 7.6 CMake/example wiring
-- CMakeLists.txt for external examples is auto-generated by the scaffold step; do not hand-edit.
-- C shim sources are embedded in module `root.zig` and released automatically to `espz_rt/<module>/`.
-- Auto-entry apps use generated `app_main.generated.c`; do not reintroduce handwritten `main/main.c`.
-- Do not use `main_component_sources` to reference C files; use the embedded infrastructure instead.
+- Board files are declarative and export `pub const config` and `pub const pins`.
+- Firmware imports board data through `@import("board")`.
+- Do not hand-write `CMakeLists.txt` or `main/main.c` for examples.
+- Prefer typed Zig wrappers over raw `extern fn` in firmware code.
 
-### 7.7 Board config conventions
-- Board files are declarative with two sections:
-  - `pub const config = .{ ... }` — sdkconfig generation (chip, components, partition table).
-  - `pub const pins = .{ ... }` — hardware pin layout grouped by peripheral (i2c, lcd, adc, etc.).
-- Keep board profiles in `examples/<app>/board/*.zig`.
-- `pins` is auto-injected as `@import("board_pins")` in firmware; no build.zig changes needed.
-- Avoid duplicated ownership of the same sdkconfig key across layers.
+### Docs and config completeness
 
-### 7.8 Component package docs and config completeness (important)
-- Every `src/<module>/` directory must include a `README.md` that explains:
-  - which ESP-IDF component the module maps to;
-  - the module boundary (what it does / does not do);
-  - dependencies and relationships with other modules.
-- If a module has `config.zig`, every config field must include clear documentation comments with at least:
-  - corresponding Kconfig key;
-  - config meaning;
-  - default value.
-- `config.zig` must fully express sdkconfig items in its ownership scope:
-  - do not rely on hidden ESP-IDF defaults for key options without explicit declaration;
-  - `appendModuleDoc` output must stay consistent with config structure to avoid implicit omissions.
-- Principle: **no hidden configuration in IDF** for managed module scope; keys must be explicit, traceable, and auditable.
+- Every `src/component/<module>/` directory should include a `README.md`.
+- Every `sdkconfig.zig` field should document the Kconfig key, meaning, and default.
+- Do not rely on hidden ESP-IDF defaults for options owned by this repo.
 
-## 8) Adding an ESP-IDF component binding (`src/<module>/`)
+## Adding a component binding
 
-Each module under `src/` maps 1:1 to an ESP-IDF component. A module that provides
-runtime functionality (callable from firmware) follows this structure:
+Each `src/component/<module>/` directory should usually contain:
 
-### 8.1 Module entry: `root.zig`
+- `README.md`
+- `esp_mod.zig`
+- `idf_mod.zig`
+- `sdkconfig.zig`
+- implementation `.zig` files
+- optional `c_helper.c` / `c_helper.h`
 
-`root.zig` is the **single entry point** for everything the module exposes:
+Minimal `idf_mod.zig` responsibilities:
 
-```zig
-// Runtime Zig API
-pub const panel = @import("panel.zig");
-pub const spi = @import("spi.zig");
-pub const Panel = panel.Panel;
+- declare `module_name`
+- optionally declare `zig_root`
+- declare `idf_requires`
+- expose `embedded_files`
+- re-export `sdkconfig`
 
-// Build infrastructure metadata
-pub const module_name = "esp_lcd";
-pub const zig_root = "root.zig";
-pub const idf_requires = [_][]const u8{ "esp_lcd", "esp_driver_spi", "driver" };
-pub const embedded_files = .{
-    .{ .path = @as([]const u8, "c_helper.c"), .content = @embedFile("c_helper.c") },
-    .{ .path = @as([]const u8, "c_helper.h"), .content = @embedFile("c_helper.h") },
-};
+Registration steps:
+
+1. Add the module to `src/idf/cmake/component.zig`.
+2. Re-export it from `src/esp_mod.zig`.
+3. Re-export its sdkconfig surface from `src/idf/sdkconfig/component.zig`.
+4. If it is a runtime module, add a compile test under `test/compile_test/<module>/`.
+
+Compile-test layout:
+
+```text
+test/compile_test/<module>/
+├── .gitignore
+├── build.zig
+├── build.zig.zon
+├── board/esp32s3.zig
+└── src/main.zig
 ```
 
-Fields:
-- **Runtime API**: Zig types wrapping extern FFI functions (e.g. `Panel`, `Bus`, `PanelIo`).
-- `module_name`: directory name under `espz_rt/` in the build output.
-- `zig_root` (optional): if set, the module is auto-injected as `@import("<module_name>")` for firmware code.
-- `idf_requires`: ESP-IDF component names the C shims depend on; used in generated CMake `target_link_libraries`.
-- `embedded_files`: C shim source files embedded at compile time and released to the build directory.
+Run compile tests with:
 
-**`root.zig` must only contain re-exports and metadata.** Do not put `extern fn`
-declarations, struct definitions, or function implementations directly in `root.zig`.
-Move all binding code to separate implementation files (e.g. `oneshot.zig`, `master.zig`)
-and re-export from `root.zig` via `pub const x = @import("x.zig");`.
-This rule is enforced by `zig build test`.
-
-### 8.2 C shim files (`c_helper.c`)
-
-C shims bridge Zig extern function declarations to ESP-IDF C APIs. They hide complex
-C struct initialization behind simple parameter-list functions:
-
-```c
-int32_t espz_lcd_spi_bus_init(int32_t host_id, int32_t sclk, int32_t mosi,
-                               int32_t miso, size_t max_transfer, int32_t dma) {
-    const spi_bus_config_t cfg = { .sclk_io_num = sclk, .mosi_io_num = mosi, ... };
-    return spi_bus_initialize((spi_host_device_t)host_id, &cfg, dma);
-}
+```bash
+zig build test -Desp_idf=/path/to/esp-idf
 ```
 
-Rules:
-- Prefix all shim functions with `espz_` (e.g. `espz_lcd_panel_reset`, `espz_i2c_master_init`).
-- Keep shims thin: parameter conversion + single ESP-IDF call, no business logic.
-- Guard optional features with `#if __has_include(...)` or `#ifdef`.
+## Writing an example
 
-### 8.3 Registration
+Typical example layout:
 
-**Step 1.** Add one line to `src/cmake.zig`:
-
-```zig
-pub const modules = .{
-    @import("esp_lcd/root.zig"),
-    @import("esp_driver_i2c/root.zig"),  // ← new module here
-};
-```
-
-**Step 2.** If the module has `zig_root`, add `--dep` and `-M` entries in
-`idf/build/workflow.zig` → `registerExternalZigLibraryStep` so firmware code
-can `@import("<module_name>")`. Search for the existing `--dep` block and append.
-
-**Step 3.** Update re-exports in `src/component.zig` (and `src/api.zig` if the
-module provides commonly used APIs).
-
-The framework automatically:
-1. Embeds C shim files into the scaffold generator binary.
-2. Releases them to `build/idf_project/main/espz_rt/<module>/` at build time.
-3. Compiles them as a separate `espz_runtime_shims` static library.
-4. Links `espz_runtime_shims` against the declared `idf_requires` components.
-5. If `zig_root` is set **and** `--dep` is wired in workflow.zig, injects the module into `zig build-lib` so firmware can `@import` it.
-
-### 8.4 Compile test (`test/`)
-
-Every runtime module (one with `zig_root` in `root.zig`) **must** have a `test/`
-directory containing a standalone ESP-IDF app that cross-compiles the module in
-isolation. This is enforced by `zig build test` (convention checks).
-
-Directory layout:
-
-```
-src/<module>/test/
-├── .gitignore           # build/ and .zig-cache/
-├── build.zig            # registers as an external example
-├── build.zig.zon        # depends on espz (path = "../../..")
+```text
+examples/<app>/
+├── build.zig
+├── build.zig.zon
 ├── board/
-│   └── esp32s3.zig      # minimal sdkconfig (all defaults unless module needs special config)
-└── src/
-    └── main.zig         # @import("<module>") + comptime checks on public API
+└── src/main.zig
 ```
 
-**`src/main.zig` template:**
+Guidelines:
 
-```zig
-const my_module = @import("<module_name>");
+- Use `esp.idf.build.registerApp(...)` in `build.zig`.
+- Prefer `-Dbuild_config` and optional `-Dbsp`; `-Dboard` is deprecated compatibility only.
+- Keep board-specific data in `board/`, not in firmware logic.
+- Entry point is `export fn zig_esp_main() callconv(.c) void`.
+- If you need an ESP-IDF C API, add a shim in the owning component instead of using raw FFI in the app.
 
-comptime {
-    _ = my_module.SomeType;
-    _ = my_module.someFunction;
-    // ... all public symbols from root.zig
-}
+## Change checklist
 
-export fn zig_esp_main() callconv(.c) void {}
-```
-
-**`build.zig` template:**
-
-```zig
-const std = @import("std");
-const espz = @import("espz");
-
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-    const board_file = b.option([]const u8, "board", "Board profile") orelse "board/esp32s3.zig";
-    const build_dir = b.option([]const u8, "build_dir", "Build directory") orelse "build";
-    const runtime = espz.workflow.externalRuntimeOptionsFromBuild(b);
-    _ = espz.registerApp(b, .{
-        .target = target, .optimize = optimize,
-        .app_name = "<module_name>_compile_test",
-        .board_file = board_file, .build_dir = build_dir,
-        .compile_check_with_idf_module = false,
-        .unprefixed_step_profile = .full,
-        .runtime = runtime,
-    });
-}
-```
-
-**Board config notes:**
-- Most modules use all-default sdkconfig.
-- `bt` requires `.bt = modules.bt_config.withDefaultConfig(.{ .bt_enabled = true, ... })`.
-- `esp_sr` requires PSRAM: `.esp_psram = modules.esp_psram_config.withDefaultConfig(.{ .spiram = true, ... })` and `.target_soc = ... .{ .esp32s3_spiram_support = true }`.
-
-**Running the compile test:**
-
-```bash
-cd src/<module>/test
-zig build idf-build -Desp_idf=/path/to/esp-idf
-```
-
-**Pending modules:** Some modules with `zig_root` are not yet wired with `--dep` in
-`workflow.zig`. These are listed in `test/convention_checks.zig` → `compile_test_pending`.
-When wiring a pending module, remove it from that list and create its `test/` directory.
-
-## 9) Writing a firmware example (`examples/<app>/`)
-
-### 9.1 `build.zig`
-
-Minimal — delegate everything to the framework:
-
-```zig
-const espz = @import("espz");
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-    const board_file = b.option([]const u8, "board", "Board profile") orelse "board/esp32s3_szp.zig";
-    const build_dir = b.option([]const u8, "build_dir", "Build directory") orelse "build";
-    const runtime = espz.workflow.externalRuntimeOptionsFromBuild(b);
-    _ = espz.registerApp(b, .{
-        .target = target, .optimize = optimize,
-        .app_name = "my_app", .board_file = board_file,
-        .build_dir = build_dir, .runtime = runtime,
-    });
-}
-```
-
-### 9.2 Board profile (`board/<name>.zig`)
-
-Each board file exports sdkconfig (`pub const config`) and hardware pin layout (`pub const pins`):
-
-```zig
-pub const config = .{ .core = ..., .board = .{ .name = "board.esp32s3_szp", ... }, ... };
-
-pub const pins = .{
-    .i2c = .{ .port = 0, .sda = 1, .scl = 2, .freq_hz = @as(u32, 100_000) },
-    .lcd = .{ .spi_host = 2, .sclk = 41, .mosi = 40, .dc = 39, ... },
-    .battery_adc = .{ .unit = 0, .channel = 9, ... },
-};
-```
-
-Pin layout is accessed in firmware via `@import("board_pins").pins`. The framework auto-injects
-the board file selected by `-Dboard=` as the `board_pins` module.
-
-### 9.3 Firmware entry (`src/main.zig`)
-
-- Entry point: `export fn zig_esp_main() callconv(.c) void`.
-- Use `@import("esp_lcd")`, `@import("board_pins")` etc. for module APIs and board config.
-- **Avoid raw `extern fn` for ESP-IDF calls.** If a C API is needed, add a C shim in the
-  corresponding `src/<module>/c_helper.c` and expose a Zig wrapper in `root.zig`.
-  Firmware code should call typed Zig APIs, not raw FFI.
-- `extern fn` is acceptable only for fundamental runtime symbols always available
-  (e.g. `vTaskDelay`, `esp_rom_printf`, `abort`).
-
-### 9.4 Build & flash
-
-```bash
-zig build flash-monitor -Dboard=board/esp32s3_szp.zig -Dport=/dev/cu.usbmodem14301 -Dtimeout=15
-```
-
-`-Dtimeout=N` auto-exits monitor after N seconds (useful for CI / batch testing).
-
-## 10) Change checklist
 1. Run `zig fmt` on touched Zig files.
-2. Run `zig build` to verify build graph.
-3. Run `zig build test` to verify convention checks pass.
-4. If you added/modified a runtime module (`zig_root`), run its compile test:
-   `cd src/<module>/test && zig build idf-build -Desp_idf=...`
-5. If workflow wiring changed, verify an example builds end-to-end (`zig build flash-monitor -Dtimeout=15`).
-6. If runtime behavior changed, flash to hardware and verify.
-7. If you touched `src/<module>/`, ensure that module has/updates `README.md`.
-8. If you touched `config.zig`, ensure field docs are complete and run sdkconfig coverage check.
+2. Run `zig build`.
+3. Run `zig build test`.
+4. If you changed a runtime component, make sure its compile test exists and still builds.
+5. If you changed workflow wiring, build at least one example end-to-end.
+6. If you changed runtime behavior, flash to hardware and verify it.
+7. If you touched a component, update its `README.md`.
+8. If you touched `sdkconfig.zig`, make sure docs stay complete.
 
-## 11) Non-goals / do-not-do
-- No Bazel validation flow.
-- No dependence on non-existent PR/CI gates.
-- No placeholder APIs or fake runtime behavior.
+## Non-goals
+
+- No Bazel workflow.
+- No fake runtime behavior in exposed APIs.
+- No dependence on missing CI or PR infrastructure.

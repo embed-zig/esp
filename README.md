@@ -1,14 +1,27 @@
-# ESPZ
+# ESP
 
-Zig-first ESP-IDF binding package. Write ESP32 firmware in pure Zig with
-type-safe APIs, declarative board configs, and zero hand-written CMake.
+Zig-first ESP-IDF bindings for writing ESP32 firmware in pure Zig.
+
+## Table Of Contents
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Repository layout](#repository-layout)
+- [Core concepts](#core-concepts)
+- [Common commands](#common-commands)
+- [Build options](#build-options)
 
 ## Prerequisites
 
-- **Zig toolchain**: use the Xtensa-capable fork from
-  [embed-zig/esp-zig-bootstrap](https://github.com/embed-zig/esp-zig-bootstrap)
-  (>= 0.15.2). Upstream Zig does not support Xtensa.
-- **ESP-IDF** (v5.x): required for flash/monitor workflows.
+- Zig: use the Xtensa-capable fork from [embed-zig/esp-zig-bootstrap](https://github.com/embed-zig/esp-zig-bootstrap)
+- ESP-IDF v5.x
+
+Recommended:
+
+```bash
+zig build hello_world-idf-build -Desp_idf=/path/to/esp-idf
+```
+
+Or use the environment manually:
 
 ```bash
 export ESP_IDF=/path/to/esp-idf
@@ -19,105 +32,99 @@ source "$ESP_IDF/export.sh"
 
 ```bash
 cd examples/hello_world
-zig build flash-monitor \
-  -Dboard=board/esp32s3_devkit.zig \
-  -Dport=/dev/cu.usbmodem1301 \
-  -Desp_idf=$ESP_IDF \
-  -Dtimeout=15
+zig build flash-monitor -Dport=/dev/cu.usbmodem1301 -Desp_idf="$ESP_IDF" -Dtimeout=15
 ```
 
 ## Repository layout
 
 ```text
 .
-├── build.zig              # Root package: exports workflow + registerApp
+├── build.zig
 ├── src/
-│   ├── component.zig      # Firmware runtime entry (re-exports modules with Zig API)
-│   ├── cmake.zig          # CMake build pipeline (aggregates embedded C shims)
-│   ├── sdkconfig.zig      # Sdkconfig generation pipeline (aggregates config modules)
-│   ├── esp_lcd/           # Component binding: Zig API + C shim + metadata
-│   │   ├── root.zig       # Single entry: runtime API + embedded_files + idf_requires
-│   │   ├── panel.zig      # Panel type (reset/init/draw/mirror/...)
-│   │   ├── spi.zig        # SPI Bus + PanelIo types
-│   │   ├── driver.zig     # ST7789 / ILI9341 driver creation
-│   │   ├── c_helper.c     # C shim: bridges extern fn to ESP-IDF C API
-│   │   └── c_helper.h
-│   ├── esp_driver_i2c/    # I2C master shim
-│   ├── esp_driver_ledc/   # LEDC backlight shim
-│   ├── esp_adc/           # ADC oneshot shim
-│   └── ...                # Other component modules (sdkconfig-only or with runtime API)
-├── idf/
-│   ├── build/             # Build workflow (scaffold, env check, pty monitor)
-│   ├── sdkconfig/         # Sdkconfig generation system
-│   └── partition/         # Partition table generation
+│   ├── esp_mod.zig          # root Zig API: esp.component / esp.hal / esp.runtime
+│   ├── idf_mod.zig          # root IDF helpers: sdkconfig / partition / build
+│   ├── component/           # 1:1 ESP-IDF component bindings
+│   ├── hal/                 # board-facing hardware abstractions
+│   ├── runtime/             # reusable runtime helpers
+│   └── idf/                 # build, sdkconfig, partition integration
+├── test/
+│   ├── convention_checks.zig
+│   └── compile_test/
 └── examples/
-    ├── hello_world/       # Minimal pure-Zig blinky
-    ├── lcd_battery/       # LCD + battery ADC (pure Zig, uses esp_lcd module)
-    ├── wifi/              # Wi-Fi scan/sta/ap examples
-    └── bt_vhci_smoke/     # Bluetooth VHCI smoke test
+    ├── hello_world/
+    ├── wifi/
+    ├── bt_vhci_smoke/
+    ├── aec_7210_8311/
+    └── ota_led/
 ```
 
-## How it works
+## Core concepts
 
-### Component bindings (`src/<module>/`)
+### Component bindings
 
-Each module maps 1:1 to an ESP-IDF component. A `root.zig` serves as the single
-entry point, exporting:
+Each directory under `src/component/` maps to one ESP-IDF component.
 
-- **Runtime Zig API** — type-safe wrappers around extern FFI functions
-  (e.g. `Panel`, `Bus`, `PanelIo`).
-- **Embedded C shims** — `c_helper.c` files that bridge Zig extern declarations
-  to ESP-IDF C APIs with complex struct parameters. Embedded via `@embedFile`
-  and auto-released to the build directory.
-- **Build metadata** — `module_name`, `idf_requires`, `zig_root` used by the
-  scaffold generator to wire CMake and Zig module deps.
+- `esp_mod.zig`: runtime Zig API
+- `idf_mod.zig`: build metadata and sdkconfig export
+- `sdkconfig.zig`: owned config surface
+- `c_helper.c` / `c_helper.h`: optional thin C shims
 
-Register a new module with one line in `src/cmake.zig`.
+### Firmware examples
 
-### Firmware examples (`examples/<app>/`)
+Examples live under `examples/<app>/` and usually contain:
 
-A firmware project consists of three files:
+- `build.zig`
+- `board/`
+- `src/main.zig`
 
-| File | Purpose |
-|---|---|
-| `build.zig` | Calls `espz.registerApp()` — no CMake, no boilerplate |
-| `board/<name>.zig` | `pub const config` (sdkconfig) + `pub const pins` (hardware pin layout) |
-| `src/main.zig` | Pure Zig firmware — `@import("esp_lcd")` for APIs, `@import("board_pins")` for pin config |
+Most examples accept `-Dbuild_config=...` and optional `-Dbsp=...`. Some apps
+require both explicitly.
 
-The framework auto-injects module deps and board config based on `-Dboard=`.
-Build commands are identical across all examples:
+### Build flow
+
+`zig build` drives the whole pipeline:
+
+1. Generate sdkconfig and partition data from board config
+2. Scaffold a temporary IDF project
+3. Build Zig firmware as a static library
+4. Run `idf.py build`
+5. Optionally flash and monitor
+
+## Common commands
 
 ```bash
-zig build flash-monitor -Dboard=board/esp32s3_szp.zig -Dport=/dev/cu.xxx -Dtimeout=15
+zig build
+zig build test
+zig build -l
 ```
 
-### Build pipeline
+Build one example:
 
-```text
-zig build flash-monitor
-  ├─ sdkconfig generation       (board/*.zig → sdkconfig.generated)
-  ├─ IDF project scaffold       (CMakeLists.txt + app_main.c + espz_rt/ C shims)
-  ├─ Zig static library          (src/main.zig → zig_entry.a, with --dep esp_lcd/board_pins)
-  ├─ ESP-IDF CMake build         (idf.py build)
-  ├─ Flash                       (esptool)
-  └─ Monitor                     (idf_monitor via pty, auto-exit with -Dtimeout)
+```bash
+zig build hello_world
+zig build wifi_scan
+zig build bt_vhci_smoke
+```
+
+Example workflow commands:
+
+```bash
+zig build <app>-configure -Desp_idf=/path/to/esp-idf
+zig build <app>-idf-build -Desp_idf=/path/to/esp-idf
+zig build <app>-flash -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
+zig build <app>-monitor -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
+zig build <app>-flash-monitor -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
 ```
 
 ## Build options
 
-| Option | Description |
-|---|---|
-| `-Dboard=<path>` | Board profile file (default varies per example) |
-| `-Dbuild_dir=<dir>` | Build output directory (default: `build`) |
-| `-Desp_idf=<path>` | ESP-IDF root (or set `ESP_IDF` env var) |
-| `-Dport=<serial>` | Serial port for flash/monitor |
-| `-Dtimeout=<seconds>` | Auto-exit monitor after N seconds |
-| `-Dzig_bin=<path>` | Zig binary for cross-compilation |
+Common options:
 
-## Design principles
-
-- **ESP-IDF bindings only** — no cross-platform abstraction layer.
-- **Pure Zig firmware** — no C business code in examples; C shims live in component modules.
-- **Single entry per module** — `root.zig` is the only export surface.
-- **Board config as data** — pins and sdkconfig are declarative structs, not code.
-- **Zero user-facing CMake** — all CMakeLists.txt are auto-generated.
+- `-Dbuild_config=<path>`: board config file
+- `-Dbsp=<path>`: board BSP file for examples that split config and BSP
+- `-Dbuild_dir=<dir>`: generated build output directory
+- `-Desp_idf=<path>`: ESP-IDF root
+- `-Didf_py=<path>`: explicit `idf.py`
+- `-Dport=<serial>`: serial port for flash and monitor
+- `-Dbaud=<rate>`: serial baud rate
+- `-Dtimeout=<seconds>`: auto-exit monitor after N seconds
