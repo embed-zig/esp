@@ -3,10 +3,3 @@ openteam/
 .zig-cache/
 zig-out/
 
-# ESP-IDF generated config files
-**/sdkconfig
-!idf/sdkconfig/
-!idf/sdkconfig/**
-**/sdkconfig.old
-**/sdkconfig.generated
-**/partitions.generated*.csv
