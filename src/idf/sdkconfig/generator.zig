@@ -6,6 +6,9 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+    var temp_arena = std.heap.ArenaAllocator.init(allocator);
+    defer temp_arena.deinit();
+    const temp_allocator = temp_arena.allocator();
 
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
@@ -22,8 +25,7 @@ pub fn main() !void {
     const partition_output_path = args[2];
     const partition_filename_for_idf = args[3];
 
-    const docs = try board_adapter.collectModuleDocs(allocator, partition_filename_for_idf);
-    defer sdkconfig.freeModuleDocs(allocator, docs);
+    const docs = try board_adapter.collectModuleDocs(temp_allocator, partition_filename_for_idf);
 
     const rendered = try sdkconfig.render(allocator, docs);
     defer allocator.free(rendered);

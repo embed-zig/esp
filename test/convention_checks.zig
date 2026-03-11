@@ -21,13 +21,20 @@ fn dirHasRealFiles(parent: std.fs.Dir, name: []const u8) bool {
     return false;
 }
 
-fn dirContainsZigFile(parent: std.fs.Dir, sub_path: []const u8) bool {
+fn dirContainsBoardConfig(parent: std.fs.Dir, sub_path: []const u8) bool {
     var sub = parent.openDir(sub_path, .{ .iterate = true }) catch return false;
     defer sub.close();
     var iter = sub.iterate();
     while (iter.next() catch null) |entry| {
-        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".zig"))
-            return true;
+        if (entry.kind != .directory) continue;
+
+        var build_buf: [512]u8 = undefined;
+        const build_config_path = joinPath(&build_buf, entry.name, "build_config.zig");
+        if (!fileExistsIn(sub, build_config_path)) continue;
+
+        var bsp_buf: [512]u8 = undefined;
+        const bsp_path = joinPath(&bsp_buf, entry.name, "bsp.zig");
+        if (fileExistsIn(sub, bsp_path)) return true;
     }
     return false;
 }
@@ -165,7 +172,7 @@ test "component modules: esp_mod.zig must not contain extern fn" {
 
 // ── examples/<app>/ convention checks ──
 // AGENTS.md §9: every example app needs build.zig, build.zig.zon,
-// README.md, src/main.zig, and at least one board/*.zig.
+// README.md, src/main.zig, and at least one board/<name>/ with build_config.zig and bsp.zig.
 // AGENTS.md §7.6: no hand-written CMakeLists.txt or main/main.c.
 
 test "examples: every app has build.zig.zon" {
@@ -237,7 +244,7 @@ test "examples: every app has src/main.zig" {
     }
 }
 
-test "examples: every app has board/*.zig" {
+test "examples: every app has board/<name>/build_config.zig and bsp.zig" {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
@@ -249,13 +256,13 @@ test "examples: every app has board/*.zig" {
     for (apps) |app| {
         var buf: [512]u8 = undefined;
         const board_path = joinPath(&buf, app, "board");
-        if (!dirContainsZigFile(examples, board_path)) {
-            std.debug.print("  MISSING: examples/{s}/board/*.zig\n", .{app});
+        if (!dirContainsBoardConfig(examples, board_path)) {
+            std.debug.print("  MISSING: examples/{s}/board/<name>/{{build_config,bsp}}.zig\n", .{app});
             fail_count += 1;
         }
     }
     if (fail_count > 0) {
-        std.debug.print("{d}/{d} example(s) missing board/*.zig\n", .{ fail_count, apps.len });
+        std.debug.print("{d}/{d} example(s) missing board/<name>/{{build_config,bsp}}.zig\n", .{ fail_count, apps.len });
         return error.TestUnexpectedResult;
     }
 }

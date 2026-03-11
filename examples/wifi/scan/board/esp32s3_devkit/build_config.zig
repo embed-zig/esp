@@ -73,21 +73,11 @@ pub const config = .{
     .wear_levelling = modules.wear_levelling_config.Config.default,
     .wpa_supplicant = modules.wpa_supplicant_config.Config.default,
     .board = .{
-        .name = @as([]const u8, "board.esp32s3_krovo2"),
+        .name = @as([]const u8, "board.esp32s3_devkit"),
         .chip = @as([]const u8, "esp32s3"),
         .target_arch = @as([]const u8, "xtensa"),
         .target_arch_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ARCH_XTENSA"),
         .target_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ESP32S3"),
     },
     .partition_table = partition.default_table,
-};
-
-pub const pins = .{
-    .wifi_ap = .{
-        .ssid = @as([]const u8, "espz-test-ap"),
-        .password = @as([]const u8, "espz1234"),
-        .channel = @as(u8, 6),
-        .max_connection = @as(u8, 4),
-        .hidden = false,
-    },
 };

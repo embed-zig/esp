@@ -25,17 +25,17 @@ AEC (Acoustic Echo Cancellation) demo using ES7210 4-channel ADC and ES8311 DAC/
 
 ## Build & Flash
 
-Both `-Dbuild_config` and `-Dbsp` are required:
+This example uses the separated `build_config` + `bsp` layout, so both flags are required:
 
 ```bash
 cd examples/aec_7210_8311
-zig build flash-monitor -Dbuild_config=board/esp32s3_szp.zig -Dbsp=board/esp32s3_szp/bsp.zig -Dport=/dev/cu.usbmodem14301 -Desp_idf="$ESP_IDF" -Dtimeout=20
+zig build flash-monitor -Dbuild_config=board/esp32s3_szp/build_config.zig -Dbsp=board/esp32s3_szp/bsp.zig -Dport=/dev/cu.usbmodem14301 -Desp_idf="$ESP_IDF" -Dtimeout=20
 ```
 
 Switch board profile explicitly when needed:
 
 ```bash
-zig build flash-monitor -Dbuild_config=board/esp32s3_krovo2_v3.zig -Dbsp=board/esp32s3_krovo2_v3/bsp.zig -Dport=/dev/cu.usbmodem14301 -Desp_idf="$ESP_IDF" -Dtimeout=20
+zig build flash-monitor -Dbuild_config=board/esp32s3_krovo2_v3/build_config.zig -Dbsp=board/esp32s3_krovo2_v3/bsp.zig -Dport=/dev/cu.usbmodem14301 -Desp_idf="$ESP_IDF" -Dtimeout=20
 ```
 
 ## Results
@@ -60,6 +60,7 @@ zig build flash-monitor -Dbuild_config=board/esp32s3_krovo2_v3.zig -Dbsp=board/e
 - `src/es7210.zig` — ES7210 4-channel ADC driver
 - `src/es8311.zig` — ES8311 DAC/ADC codec driver
 - `build.zig` — build configuration
-- `board/esp32s3_szp.zig` — SZP board profile wrapper
 - `board/esp32s3_szp/build_config.zig` — SZP sdkconfig profile
 - `board/esp32s3_szp/bsp.zig` — SZP pin definitions and audio BSP
+- `board/esp32s3_krovo2_v3/build_config.zig` — Krovo2 v3 sdkconfig profile
+- `board/esp32s3_krovo2_v3/bsp.zig` — Krovo2 v3 pin definitions and audio BSP

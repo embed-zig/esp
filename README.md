@@ -2,6 +2,8 @@
 
 Zig-first ESP-IDF bindings for writing ESP32 firmware in pure Zig.
 
+[中文 README](./README.zh-CN.md)
+
 ## Table Of Contents
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
@@ -18,7 +20,11 @@ Zig-first ESP-IDF bindings for writing ESP32 firmware in pure Zig.
 Recommended:
 
 ```bash
-zig build hello_world-idf-build -Desp_idf=/path/to/esp-idf
+cd examples/hello_world
+zig build idf-build \
+  -Dbuild_config=board/esp32s3_devkit/build_config.zig \
+  -Dbsp=board/esp32s3_devkit/bsp.zig \
+  -Desp_idf=/path/to/esp-idf
 ```
 
 Or use the environment manually:
@@ -32,7 +38,12 @@ source "$ESP_IDF/export.sh"
 
 ```bash
 cd examples/hello_world
-zig build flash-monitor -Dport=/dev/cu.usbmodem1301 -Desp_idf="$ESP_IDF" -Dtimeout=15
+zig build flash-monitor \
+  -Dbuild_config=board/esp32s3_devkit/build_config.zig \
+  -Dbsp=board/esp32s3_devkit/bsp.zig \
+  -Dport=/dev/cu.usbmodem1301 \
+  -Desp_idf="$ESP_IDF" \
+  -Dtimeout=15
 ```
 
 ## Repository layout
@@ -77,8 +88,7 @@ Examples live under `examples/<app>/` and usually contain:
 - `board/`
 - `src/main.zig`
 
-Most examples accept `-Dbuild_config=...` and optional `-Dbsp=...`. Some apps
-require both explicitly.
+Examples require both `-Dbuild_config=...` and `-Dbsp=...`.
 
 ### Build flow
 
@@ -101,27 +111,33 @@ zig build -l
 Build one example:
 
 ```bash
-zig build hello_world
-zig build wifi_scan
-zig build bt_vhci_smoke
+zig build hello_world \
+  -Dbuild_config=examples/hello_world/board/esp32s3_devkit/build_config.zig \
+  -Dbsp=examples/hello_world/board/esp32s3_devkit/bsp.zig
+zig build wifi_scan \
+  -Dbuild_config=examples/wifi/scan/board/esp32s3_devkit/build_config.zig \
+  -Dbsp=examples/wifi/scan/board/esp32s3_devkit/bsp.zig
+zig build bt_vhci_smoke \
+  -Dbuild_config=examples/bt_vhci_smoke/board/esp32s3_devkit/build_config.zig \
+  -Dbsp=examples/bt_vhci_smoke/board/esp32s3_devkit/bsp.zig
 ```
 
 Example workflow commands:
 
 ```bash
-zig build <app>-configure -Desp_idf=/path/to/esp-idf
-zig build <app>-idf-build -Desp_idf=/path/to/esp-idf
-zig build <app>-flash -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
-zig build <app>-monitor -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
-zig build <app>-flash-monitor -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
+zig build <app>-configure -Dbuild_config=<path> -Dbsp=<path> -Desp_idf=/path/to/esp-idf
+zig build <app>-idf-build -Dbuild_config=<path> -Dbsp=<path> -Desp_idf=/path/to/esp-idf
+zig build <app>-flash -Dbuild_config=<path> -Dbsp=<path> -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
+zig build <app>-monitor -Dbuild_config=<path> -Dbsp=<path> -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
+zig build <app>-flash-monitor -Dbuild_config=<path> -Dbsp=<path> -Dport=/dev/cu.xxx -Desp_idf=/path/to/esp-idf
 ```
 
 ## Build options
 
 Common options:
 
-- `-Dbuild_config=<path>`: board config file
-- `-Dbsp=<path>`: board BSP file for examples that split config and BSP
+- `-Dbuild_config=<path>`: required board config file
+- `-Dbsp=<path>`: required board BSP file
 - `-Dbuild_dir=<dir>`: generated build output directory
 - `-Desp_idf=<path>`: ESP-IDF root
 - `-Didf_py=<path>`: explicit `idf.py`

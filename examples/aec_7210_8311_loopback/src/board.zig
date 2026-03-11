@@ -4,7 +4,7 @@ const rom = esp_component.esp_rom;
 const heap = esp_component.heap;
 const i2c = esp_component.esp_driver_i2c;
 const i2s = esp_component.esp_driver_i2s;
-const gpio = esp_component.gpio;
+const gpio = esp_component.esp_driver_gpio;
 pub const board_pins = @import("board");
 
 const es7210 = @import("es7210.zig");

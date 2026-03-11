@@ -1,4 +1,5 @@
 const std = @import("std");
+const embed_build = @import("embed_zig");
 
 pub const RuntimeDefaults = struct {
     idf_py: []const u8 = "idf.py",
@@ -16,7 +17,7 @@ pub const RuntimeOptions = struct {
     timeout: ?u32 = null,
 };
 
-pub const ExternalRuntimeOptions = struct {
+const ExternalRuntimeOptions = struct {
     esp_idf: ?[]const u8,
     chip: []const u8 = "esp32s3",
     port: ?[]const u8,
@@ -45,7 +46,7 @@ pub fn runtimeOptionsFromBuild(b: *std.Build, defaults: RuntimeDefaults) Runtime
     };
 }
 
-pub fn externalRuntimeOptionsFromBuild(b: *std.Build) ExternalRuntimeOptions {
+fn externalRuntimeOptionsFromBuild(b: *std.Build) ExternalRuntimeOptions {
     const opt = b.option([]const u8, "esp_idf", "ESP-IDF root directory; defaults to ESP_IDF env var");
     const esp_idf = opt orelse getEnvOrNull(b, "ESP_IDF");
     const port = b.option([]const u8, "port", "Serial port used by flash/monitor");
@@ -104,18 +105,6 @@ pub const Registration = struct {
     flash_monitor_step: *std.Build.Step,
 };
 
-pub const DataPartitionFlash = struct {
-    name: []const u8,
-    offset: u32,
-    size: u32 = 0,
-    source: DataPartitionSource,
-
-    pub const DataPartitionSource = union(enum) {
-        dir: []const u8,
-        raw_file: []const u8,
-    };
-};
-
 pub const BuildOption = struct {
     name: []const u8,
     value: Value,
@@ -133,238 +122,64 @@ const ToolchainSysroot = struct {
     include_dir: std.Build.LazyPath,
 };
 
-pub const RegisterExternalOptions = struct {
+pub const RegisterAppOptions = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 
-    app_name: []const u8,
     app_root: []const u8 = ".",
     app_entry: []const u8 = "src/main.zig",
-
-    build_config: []const u8,
-    bsp_file: ?[]const u8 = null,
-    build_dir: []const u8 = "build",
     entry_symbol: []const u8 = "zig_esp_main",
 
     extra_component_dirs: []const std.Build.LazyPath = &.{},
     extra_zig_modules: []const ExtraZigModule = &.{},
     build_options: []const BuildOption = &.{},
-
-    data_partitions: []const DataPartitionFlash = &.{},
-
-    runtime: ExternalRuntimeOptions,
-
-    expose_prefixed_steps: bool = false,
-    expose_unprefixed_steps: bool = true,
+    embed_links: embed_build.LinkOptions = .{},
 };
 
-pub fn registerAppWorkflow(b: *std.Build, options: RegisterOptions) Registration {
-    const idf_module = resolveIdfModule(b, options);
-    const entry_path = joinPath(b, options.app_dir, options.app_entry);
-    const required_env_check_run = registerRequiredEnvCheckStepWithRoot(
-        b,
-        options.app_name,
-        options.esp_root,
-    );
-    const app_imports = buildAppImports(b, idf_module, options.app_options_module);
+pub fn registerApp(b: *std.Build, app_name: []const u8, opts: RegisterAppOptions) Registration {
+    const deprecated_board = b.option([]const u8, "board", "DEPRECATED: use -Dbuild_config instead");
+    const build_config_opt = b.option([]const u8, "build_config", "Board build config file path");
+    const bsp_file_opt = b.option([]const u8, "bsp", "Board BSP file (optional, enables @import(\"esp\") in board)");
+    const build_dir_opt = b.option([]const u8, "build_dir", "Directory for all generated workflow files");
+    const build_config = build_config_opt orelse @panic("missing required -Dbuild_config=<path>");
+    const bsp_file = bsp_file_opt orelse @panic("missing required -Dbsp=<path>");
+    const build_dir = build_dir_opt orelse
+        "build";
+    const app_root = opts.app_root;
+    const app_entry = opts.app_entry;
+    const entry_symbol = opts.entry_symbol;
+    const external_runtime = externalRuntimeOptionsFromBuild(b);
+    const expose_prefixed_steps = false;
 
-    const app_root_module = b.createModule(.{
-        .root_source_file = b.path(entry_path),
-        .target = options.target,
-        .optimize = options.optimize,
-        .link_libc = options.link_libc,
-        .imports = app_imports,
-    });
-
-    const executable = b.addExecutable(.{
-        .name = options.app_name,
-        .root_module = app_root_module,
-    });
-
-    if (options.install_artifact) {
-        b.installArtifact(executable);
+    if (deprecated_board != null) {
+        @panic("-Dboard is no longer supported; use -Dbuild_config instead");
+    }
+    if (build_dir_opt == null) {
+        std.log.warn("missing -Dbuild_dir, using default {s}", .{build_dir});
     }
 
-    const build_step: *std.Build.Step = if (options.expose_prefixed_steps) blk: {
-        const step = b.step(
-            options.app_name,
-            b.fmt("Build {s} example", .{options.app_name}),
-        );
-        step.dependOn(&executable.step);
-        break :blk step;
-    } else &executable.step;
-
-    const sdkconfig_step = if (options.sdkconfig) |sdkconfig_options|
-        registerSdkconfigStep(b, options.app_name, options.app_dir, sdkconfig_options, options.esp_dep orelse @panic("registerAppWorkflow requires esp_dep for sdkconfig"), true)
-    else
-        null;
-    const app_main_step = if (options.auto_app_main) |auto_options|
-        registerAppMainGenerationStep(b, options.app_name, options.app_dir, auto_options, options.esp_root, true)
-    else
-        null;
-    const sdkconfig_file = if (options.sdkconfig) |sdkconfig_options| sdkconfig_options.output_file else null;
-
-    const set_target_cmd = addIdfPyBaseCommand(
-        b,
-        options.runtime,
-        options.app_dir,
-        null,
-        options.board_profile_name,
-        options.idf_build_dir,
-        options.extra_component_dirs,
-    );
-    set_target_cmd.step.dependOn(&required_env_check_run.step);
-    if (app_main_step) |step| {
-        set_target_cmd.step.dependOn(step);
-    }
-    set_target_cmd.addArgs(&.{ "set-target", options.runtime.chip });
-
-    const reconfigure_cmd = addIdfPyBaseCommand(
-        b,
-        options.runtime,
-        options.app_dir,
-        sdkconfig_file,
-        options.board_profile_name,
-        options.idf_build_dir,
-        options.extra_component_dirs,
-    );
-    reconfigure_cmd.addArg("reconfigure");
-    reconfigure_cmd.step.dependOn(&set_target_cmd.step);
-    if (sdkconfig_step) |step| {
-        reconfigure_cmd.step.dependOn(step);
-    }
-    if (app_main_step) |step| {
-        reconfigure_cmd.step.dependOn(step);
-    }
-
-    const configure_step = b.step(
-        b.fmt("{s}-configure", .{options.app_name}),
-        b.fmt("Run idf.py reconfigure for {s}", .{options.app_name}),
-    );
-    configure_step.dependOn(&reconfigure_cmd.step);
-
-    const idf_build_cmd = addIdfPyBaseCommand(
-        b,
-        options.runtime,
-        options.app_dir,
-        sdkconfig_file,
-        options.board_profile_name,
-        options.idf_build_dir,
-        options.extra_component_dirs,
-    );
-    idf_build_cmd.addArg("build");
-    idf_build_cmd.step.dependOn(&reconfigure_cmd.step);
-    idf_build_cmd.step.dependOn(&executable.step);
-
-    const idf_build_step = b.step(
-        b.fmt("{s}-idf-build", .{options.app_name}),
-        b.fmt("Run idf.py build for {s}", .{options.app_name}),
-    );
-    idf_build_step.dependOn(&idf_build_cmd.step);
-
-    const flash_cmd = addIdfPyBaseCommand(
-        b,
-        options.runtime,
-        options.app_dir,
-        sdkconfig_file,
-        options.board_profile_name,
-        options.idf_build_dir,
-        options.extra_component_dirs,
-    );
-    addSerialArgs(flash_cmd, options.runtime);
-    flash_cmd.addArg("flash");
-    flash_cmd.step.dependOn(&idf_build_cmd.step);
-
-    const flash_step = b.step(
-        b.fmt("{s}-flash", .{options.app_name}),
-        b.fmt("Flash {s} with idf.py", .{options.app_name}),
-    );
-    flash_step.dependOn(&flash_cmd.step);
-
-    const monitor_cmd = addIdfPyMonitorCommand(
-        b,
-        options.runtime,
-        options.app_dir,
-        sdkconfig_file,
-        options.board_profile_name,
-        options.idf_build_dir,
-        options.extra_component_dirs,
-        options.esp_root,
-        false,
-    );
-    monitor_cmd.step.dependOn(&idf_build_cmd.step);
-
-    const monitor_step = b.step(
-        b.fmt("{s}-monitor", .{options.app_name}),
-        b.fmt("Monitor {s} with idf.py", .{options.app_name}),
-    );
-    monitor_step.dependOn(&monitor_cmd.step);
-
-    const flash_monitor_cmd = addIdfPyMonitorCommand(
-        b,
-        options.runtime,
-        options.app_dir,
-        sdkconfig_file,
-        options.board_profile_name,
-        options.idf_build_dir,
-        options.extra_component_dirs,
-        options.esp_root,
-        true,
-    );
-    flash_monitor_cmd.step.dependOn(&idf_build_cmd.step);
-
-    const flash_monitor_step = b.step(
-        b.fmt("{s}-flash-monitor", .{options.app_name}),
-        b.fmt("Flash and monitor {s} with idf.py", .{options.app_name}),
-    );
-    flash_monitor_step.dependOn(&flash_monitor_cmd.step);
-
-    if (options.expose_unprefixed_steps) {
-        if (sdkconfig_step) |step| {
-            exposeAliasStep(b, "sdkconfig", "Generate default app sdkconfig", step);
-        }
-        exposeAliasStep(b, "configure", "Run default app configure", configure_step);
-        exposeAliasStep(b, "idf-build", "Run default app idf.py build", idf_build_step);
-        exposeAliasStep(b, "flash", "Flash default app", flash_step);
-        exposeAliasStep(b, "monitor", "Monitor default app", monitor_step);
-        exposeAliasStep(b, "flash-monitor", "Flash and monitor default app", flash_monitor_step);
-    }
-
-    return .{
-        .build_step = build_step,
-        .sdkconfig_step = sdkconfig_step,
-        .app_main_step = app_main_step,
-        .configure_step = configure_step,
-        .idf_build_step = idf_build_step,
-        .flash_step = flash_step,
-        .monitor_step = monitor_step,
-        .flash_monitor_step = flash_monitor_step,
-    };
-}
-
-pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration {
     const esp_dep = b.dependency("esp", .{});
     const esp_root = esp_dep.path("");
-    const extra_component_dirs = resolveExternalExtraComponentDirs(b, options);
+    const extra_component_dirs = opts.extra_component_dirs;
 
-    const board_profile_name = deriveBoardProfileName(options.build_config);
-    const sdkconfig_output_file = joinPath(b, options.build_dir, "sdkconfig.generated");
+    const board_profile_name = deriveBoardProfileName(build_config);
+    const sdkconfig_output_file = joinPath(b, build_dir, "sdkconfig.generated");
     const partition_file_name = b.fmt(
         "partitions.generated.{x}.csv",
         .{std.hash.Wyhash.hash(0, board_profile_name)},
     );
-    const generated_partition_file = joinPath(b, options.build_dir, partition_file_name);
-    const project_rel_dir = joinPath(b, options.build_dir, "idf_project");
+    const generated_partition_file = joinPath(b, build_dir, partition_file_name);
+    const project_rel_dir = joinPath(b, build_dir, "idf_project");
     const project_main_rel_dir = joinPath(b, project_rel_dir, "main");
     const zig_entry_library_rel_file = joinPath(b, project_main_rel_dir, "zig_entry.a");
     const zig_entry_library_name = "zig_entry.a";
-    const resolved_target = resolveChipTarget(b, options.runtime.chip);
-    const toolchain_sysroot = resolveToolchainSysroot(b, options.runtime.chip);
-    const build_options_root = createBuildOptionsRootSource(b, options.build_options);
-    const embed_dep = esp_dep.builder.dependency("embed_zig", .{
-        .target = resolved_target.query,
-        .optimize = options.optimize,
-    });
+    const resolved_target = resolveChipTarget(b, external_runtime.chip);
+    const toolchain_sysroot = resolveToolchainSysroot(b, external_runtime.chip);
+    const build_options_root = createBuildOptionsRootSource(b, opts.build_options);
+    const embed_dep = esp_dep.builder.dependency(
+        "embed_zig",
+        opts.embed_links.withBuildOptions(resolved_target, opts.optimize),
+    );
     const embed_link_artifact = embed_dep.artifact("embed_link");
     if (toolchain_sysroot) |sysroot| {
         embed_dep.builder.sysroot = sysroot.root;
@@ -375,44 +190,44 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
 
     const sdkconfig_step = registerSdkconfigStep(
         b,
-        options.app_name,
-        options.app_root,
+        app_name,
+        app_root,
         .{
             .output_file = sdkconfig_output_file,
             .partition_file = generated_partition_file,
             .partition_file_for_idf = b.fmt("../{s}", .{partition_file_name}),
-            .build_config = options.build_config,
+            .build_config = build_config,
         },
         esp_dep,
         build_options_root,
-        options.expose_prefixed_steps,
+        expose_prefixed_steps,
     );
 
     const project_step = registerExternalProjectScaffoldStep(
         b,
-        options.app_name,
-        options.app_root,
+        app_name,
+        app_root,
         project_rel_dir,
         zig_entry_library_name,
         extra_archive_names,
         esp_dep,
-        options.expose_prefixed_steps,
+        expose_prefixed_steps,
     );
 
     const zig_entry_library_step = registerExternalZigLibraryStep(
         b,
-        options.app_name,
-        options.app_root,
-        options.app_entry,
+        app_name,
+        app_root,
+        app_entry,
         zig_entry_library_rel_file,
-        options.optimize,
-        options.runtime.chip,
+        opts.optimize,
+        external_runtime.chip,
         esp_dep,
-        options.build_config,
-        options.bsp_file,
+        build_config,
+        bsp_file,
         build_options_root,
-        options.expose_prefixed_steps,
-        options.extra_zig_modules,
+        expose_prefixed_steps,
+        opts.extra_zig_modules,
         embed_dep,
         toolchain_sysroot,
     );
@@ -420,7 +235,7 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
 
     const extra_archive_steps = relayExtraZigArchives(
         b,
-        options.app_root,
+        app_root,
         project_main_rel_dir,
         extra_archives,
         project_step,
@@ -428,28 +243,28 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
 
     const app_main_step = registerAppMainGenerationStep(
         b,
-        options.app_name,
-        options.app_root,
+        app_name,
+        app_root,
         .{
             .output_file = joinPath(b, project_main_rel_dir, "app_main.generated.c"),
-            .delegate_symbol = options.entry_symbol,
+            .delegate_symbol = entry_symbol,
         },
         esp_root,
-        options.expose_prefixed_steps,
+        expose_prefixed_steps,
     );
     app_main_step.dependOn(project_step);
 
     const runtime = RuntimeOptions{
-        .idf_py = if (options.runtime.esp_idf) |root| idfPyPath(b, root) else "idf.py",
-        .chip = options.runtime.chip,
-        .port = options.runtime.port,
+        .idf_py = if (external_runtime.esp_idf) |root| idfPyPath(b, root) else "idf.py",
+        .chip = external_runtime.chip,
+        .port = external_runtime.port,
         .baud = 0,
-        .timeout = options.runtime.timeout,
+        .timeout = external_runtime.timeout,
     };
 
     const sdkconfig_arg = "../sdkconfig.generated";
     const idf_build_arg = "../idf";
-    const idf_project_dir = joinPath(b, options.app_root, project_rel_dir);
+    const idf_project_dir = joinPath(b, app_root, project_rel_dir);
 
     const reconfigure_cmd = addIdfPyBaseCommandWithEnv(
         b,
@@ -459,14 +274,14 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
         board_profile_name,
         idf_build_arg,
         extra_component_dirs,
-        options.runtime.esp_idf,
+        external_runtime.esp_idf,
         esp_root,
     );
     reconfigure_cmd.addArg("reconfigure");
-    if (options.runtime.esp_idf == null) {
+    if (external_runtime.esp_idf == null) {
         const required_env_check_run = registerRequiredEnvCheckStepWithRoot(
             b,
-            options.app_name,
+            app_name,
             esp_root,
         );
         reconfigure_cmd.step.dependOn(&required_env_check_run.step);
@@ -478,10 +293,10 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
         reconfigure_cmd.step.dependOn(step);
     }
 
-    const configure_step: *std.Build.Step = if (options.expose_prefixed_steps) blk: {
+    const configure_step: *std.Build.Step = if (expose_prefixed_steps) blk: {
         const step = b.step(
-            b.fmt("{s}-configure", .{options.app_name}),
-            b.fmt("Run idf.py reconfigure for {s}", .{options.app_name}),
+            b.fmt("{s}-configure", .{app_name}),
+            b.fmt("Run idf.py reconfigure for {s}", .{app_name}),
         );
         step.dependOn(&reconfigure_cmd.step);
         break :blk step;
@@ -495,7 +310,7 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
         board_profile_name,
         idf_build_arg,
         extra_component_dirs,
-        options.runtime.esp_idf,
+        external_runtime.esp_idf,
         esp_root,
     );
     idf_build_cmd.addArg("build");
@@ -505,19 +320,19 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
         idf_build_cmd.step.dependOn(step);
     }
 
-    const idf_build_step: *std.Build.Step = if (options.expose_prefixed_steps) blk: {
+    const idf_build_step: *std.Build.Step = if (expose_prefixed_steps) blk: {
         const step = b.step(
-            b.fmt("{s}-idf-build", .{options.app_name}),
-            b.fmt("Run idf.py build for {s}", .{options.app_name}),
+            b.fmt("{s}-idf-build", .{app_name}),
+            b.fmt("Run idf.py build for {s}", .{app_name}),
         );
         step.dependOn(&idf_build_cmd.step);
         break :blk step;
     } else &idf_build_cmd.step;
 
-    const build_step: *std.Build.Step = if (options.expose_prefixed_steps) blk: {
+    const build_step: *std.Build.Step = if (expose_prefixed_steps) blk: {
         const step = b.step(
-            options.app_name,
-            b.fmt("Build {s} example", .{options.app_name}),
+            app_name,
+            b.fmt("Build {s} example", .{app_name}),
         );
         step.dependOn(&idf_build_cmd.step);
         break :blk step;
@@ -531,89 +346,36 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
         board_profile_name,
         idf_build_arg,
         extra_component_dirs,
-        options.runtime.esp_idf,
+        external_runtime.esp_idf,
         esp_root,
     );
-    addExternalSerialArgs(flash_cmd, options.runtime.port);
+    addExternalSerialArgs(flash_cmd, external_runtime.port);
     flash_cmd.addArg("flash");
     flash_cmd.step.dependOn(&idf_build_cmd.step);
 
-    var last_flash_step: *std.Build.Step = &flash_cmd.step;
+    const data_partition_flash_step = registerExternalDataPartitionFlashStep(
+        b,
+        app_name,
+        app_root,
+        build_dir,
+        build_config,
+        external_runtime.port,
+        external_runtime.esp_idf,
+        esp_root,
+        build_options_root,
+        expose_prefixed_steps,
+    );
+    data_partition_flash_step.dependOn(&idf_build_cmd.step);
+    data_partition_flash_step.dependOn(&flash_cmd.step);
 
-    if (options.data_partitions.len != 0) {
-        for (options.data_partitions) |dp| {
-            const bin_path = joinPath(b, options.build_dir, b.fmt("{s}.bin", .{dp.name}));
-            const abs_bin_path = joinPath(b, options.app_root, bin_path);
-
-            switch (dp.source) {
-                .dir => |dir_rel| {
-                    const abs_dir = joinPath(b, options.app_root, dir_rel);
-                    const spiffsgen_cmd = addSpiffsgenCommand(
-                        b,
-                        options.app_root,
-                        options.runtime.esp_idf,
-                        esp_root,
-                        dp.size,
-                        abs_dir,
-                        abs_bin_path,
-                    );
-                    spiffsgen_cmd.step.dependOn(&idf_build_cmd.step);
-
-                    const esptool_cmd = addEsptoolWriteFlash(
-                        b,
-                        options.app_root,
-                        options.runtime.esp_idf,
-                        esp_root,
-                        options.runtime.port,
-                        dp.offset,
-                        abs_bin_path,
-                    );
-                    esptool_cmd.step.dependOn(&spiffsgen_cmd.step);
-                    esptool_cmd.step.dependOn(last_flash_step);
-                    last_flash_step = &esptool_cmd.step;
-                },
-                .raw_file => |file_rel| {
-                    const abs_file_path = joinPath(b, options.app_root, file_rel);
-                    const esptool_cmd = addEsptoolWriteFlash(
-                        b,
-                        options.app_root,
-                        options.runtime.esp_idf,
-                        esp_root,
-                        options.runtime.port,
-                        dp.offset,
-                        abs_file_path,
-                    );
-                    esptool_cmd.step.dependOn(last_flash_step);
-                    last_flash_step = &esptool_cmd.step;
-                },
-            }
-        }
-    } else {
-        const data_partition_flash_step = registerExternalDataPartitionFlashStep(
-            b,
-            options.app_name,
-            options.app_root,
-            options.build_dir,
-            options.build_config,
-            options.runtime.port,
-            options.runtime.esp_idf,
-            esp_root,
-            build_options_root,
-            options.expose_prefixed_steps,
-        );
-        data_partition_flash_step.dependOn(&idf_build_cmd.step);
-        data_partition_flash_step.dependOn(last_flash_step);
-        last_flash_step = data_partition_flash_step;
-    }
-
-    const flash_step: *std.Build.Step = if (options.expose_prefixed_steps) blk: {
+    const flash_step: *std.Build.Step = if (expose_prefixed_steps) blk: {
         const step = b.step(
-            b.fmt("{s}-flash", .{options.app_name}),
-            b.fmt("Flash {s} with idf.py", .{options.app_name}),
+            b.fmt("{s}-flash", .{app_name}),
+            b.fmt("Flash {s} with idf.py", .{app_name}),
         );
-        step.dependOn(last_flash_step);
+        step.dependOn(data_partition_flash_step);
         break :blk step;
-    } else last_flash_step;
+    } else data_partition_flash_step;
 
     const monitor_cmd = addIdfPyMonitorCommandWithEnv(
         b,
@@ -625,14 +387,14 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
         extra_component_dirs,
         esp_root,
         false,
-        options.runtime.esp_idf,
+        external_runtime.esp_idf,
     );
     monitor_cmd.step.dependOn(&idf_build_cmd.step);
 
-    const monitor_step: *std.Build.Step = if (options.expose_prefixed_steps) blk: {
+    const monitor_step: *std.Build.Step = if (expose_prefixed_steps) blk: {
         const step = b.step(
-            b.fmt("{s}-monitor", .{options.app_name}),
-            b.fmt("Monitor {s} with idf.py", .{options.app_name}),
+            b.fmt("{s}-monitor", .{app_name}),
+            b.fmt("Monitor {s} with idf.py", .{app_name}),
         );
         step.dependOn(&monitor_cmd.step);
         break :blk step;
@@ -648,26 +410,49 @@ pub fn registerApp(b: *std.Build, options: RegisterExternalOptions) Registration
         extra_component_dirs,
         esp_root,
         true,
-        options.runtime.esp_idf,
+        external_runtime.esp_idf,
     );
     flash_monitor_cmd.step.dependOn(&idf_build_cmd.step);
 
-    const flash_monitor_step: *std.Build.Step = if (options.expose_prefixed_steps) blk: {
+    const flash_monitor_step: *std.Build.Step = if (expose_prefixed_steps) blk: {
         const step = b.step(
-            b.fmt("{s}-flash-monitor", .{options.app_name}),
-            b.fmt("Flash and monitor {s} with idf.py", .{options.app_name}),
+            b.fmt("{s}-flash-monitor", .{app_name}),
+            b.fmt("Flash and monitor {s} with idf.py", .{app_name}),
         );
         step.dependOn(&flash_monitor_cmd.step);
         break :blk step;
     } else &flash_monitor_cmd.step;
 
-    if (options.expose_unprefixed_steps) {
-        exposeAliasStep(b, "build", "Build firmware", build_step);
-        exposeAliasStep(b, "generate-sdkconfig", "Generate sdkconfig", sdkconfig_step);
-        exposeAliasStep(b, "flash", "Flash firmware", flash_step);
-        exposeAliasStep(b, "monitor", "Monitor serial output", monitor_step);
-        exposeAliasStep(b, "flash-monitor", "Flash and monitor", flash_monitor_step);
-    }
+    exposeAliasStep(
+        b,
+        "build",
+        "Build firmware (-Dbuild_config=<path>, optional -Dbsp=<path>, -Dbuild_dir=build)",
+        build_step,
+    );
+    exposeAliasStep(
+        b,
+        "generate-sdkconfig",
+        "Generate sdkconfig (-Dbuild_config=<path>, optional -Dbsp=<path>, -Dbuild_dir=build)",
+        sdkconfig_step,
+    );
+    exposeAliasStep(
+        b,
+        "flash",
+        "Flash firmware (-Dbuild_config=<path>, optional -Dbsp=<path>, -Desp_idf=/path/to/esp-idf, -Dport=/dev/cu.xxx)",
+        flash_step,
+    );
+    exposeAliasStep(
+        b,
+        "monitor",
+        "Monitor serial output (-Dbuild_config=<path>, optional -Dbsp=<path>, -Desp_idf=/path/to/esp-idf, -Dport=/dev/cu.xxx, -Dtimeout=15)",
+        monitor_step,
+    );
+    exposeAliasStep(
+        b,
+        "flash-monitor",
+        "Flash and monitor (-Dbuild_config=<path>, optional -Dbsp=<path>, -Desp_idf=/path/to/esp-idf, -Dport=/dev/cu.xxx, -Dtimeout=15)",
+        flash_monitor_step,
+    );
 
     return .{
         .build_step = build_step,
@@ -738,7 +523,7 @@ fn relayExtraZigArchives(
 ) []const *std.Build.Step {
     const steps = b.allocator.alloc(*std.Build.Step, archives.len) catch @panic("OOM");
     for (archives, 0..) |archive, idx| {
-        const copy = b.addSystemCommand(&.{"cp", "-f"});
+        const copy = b.addSystemCommand(&.{ "cp", "-f" });
         copy.addFileArg(archive.compile.getEmittedBin());
         copy.addArg(joinPath(b, app_root, joinPath(b, project_main_rel_dir, archive.file_name)));
         copy.step.dependOn(project_step);
@@ -1139,13 +924,6 @@ fn resolveIdfModule(b: *std.Build, options: RegisterOptions) *std.Build.Module {
     }
 
     @panic("registerAppWorkflow requires idf_module, idf_root_source, or esp_root");
-}
-
-fn resolveExternalExtraComponentDirs(
-    _: *std.Build,
-    options: RegisterExternalOptions,
-) []const std.Build.LazyPath {
-    return options.extra_component_dirs;
 }
 
 fn buildAppImports(

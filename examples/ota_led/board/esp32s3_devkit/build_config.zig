@@ -1,17 +1,16 @@
 const modules = @import("idf").sdkconfig_components;
 const partition = @import("idf").partition;
+const build_options = @import("build_options");
+
+const KiB: u32 = 1024;
+const MiB: u32 = 1024 * KiB;
 
 pub const config = .{
-    .core = modules.esp_system_config.Config.default,
-    .esp_misc = modules.esp_misc_config.Config.withDefaultConfig(.{
-        .esp_default_cpu_freq_mhz = 240,
-        .esp_default_cpu_freq_mhz_160 = false,
-        .esp_default_cpu_freq_mhz_240 = true,
+    .core = modules.esp_system_config.Config.withDefaultConfig(.{
+        .main_task_stack_size = 8192,
     }),
-    .target_soc = modules.target_soc_config.Config.withDefaultConfig(.{
-        .esp32s3_default_cpu_freq_mhz = 240,
-        .esp32s3_default_cpu_freq_160 = false,
-        .esp32s3_default_cpu_freq_240 = true,
+    .esp_misc = modules.esp_misc_config.Config.withDefaultConfig(.{
+        .esp_main_task_stack_size = 8192,
     }),
     .freertos = modules.freertos_config.Config.default,
     .app_metadata = modules.app_metadata_config.Config.default,
@@ -55,7 +54,11 @@ pub const config = .{
     .esp_timer = modules.esp_timer_config.Config.default,
     .esp_wifi = modules.esp_wifi_config.Config.default,
     .espcoredump = modules.espcoredump_config.Config.default,
-    .esptool_py = modules.esptool_py_config.Config.default,
+    .esptool_py = modules.esptool_py_config.Config.withDefaultConfig(.{
+        .esptoolpy_flashsize = "4MB",
+        .esptoolpy_flashsize_2mb = false,
+        .esptoolpy_flashsize_4mb = true,
+    }),
     .fatfs = modules.fatfs_config.Config.default,
     .hal = modules.hal_config.Config.default,
     .heap = modules.heap_config.Config.default,
@@ -72,6 +75,7 @@ pub const config = .{
     .soc = modules.soc_config.Config.default,
     .spi_flash = modules.spi_flash_config.Config.default,
     .spiffs = modules.spiffs_config.Config.default,
+    .target_soc = modules.target_soc_config.Config.default,
     .tcp_transport = modules.tcp_transport_config.Config.default,
     .toolchain = modules.toolchain_config.Config.default,
     .ulp = modules.ulp_config.Config.default,
@@ -81,54 +85,41 @@ pub const config = .{
     .wear_levelling = modules.wear_levelling_config.Config.default,
     .wpa_supplicant = modules.wpa_supplicant_config.Config.default,
     .board = .{
-        .name = @as([]const u8, "board.esp32s3_szp"),
+        .name = @as([]const u8, "board.esp32s3_devkit"),
         .chip = @as([]const u8, "esp32s3"),
         .target_arch = @as([]const u8, "xtensa"),
         .target_arch_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ARCH_XTENSA"),
         .target_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ESP32S3"),
     },
-    .partition_table = partition.default_table,
-};
-
-pub const pins = .{
-    .i2c = .{
-        .port = 0,
-        .sda = 1,
-        .scl = 2,
-        .freq_hz = @as(u32, 100_000),
+    .app = .{
+        .color = build_options.color,
     },
-    .lcd = .{
-        .spi_host = 2,
-        .sclk = 41,
-        .mosi = 40,
-        .cs = -1,
-        .dc = 39,
-        .rst = -1,
-        .backlight = 42,
-        .h_res = 320,
-        .v_res = 240,
-        .bpp = @as(u8, 16),
-        .pclk_hz = @as(u32, 80_000_000),
-        .spi_mode = @as(u8, 2),
-        .invert_color = true,
-        .swap_xy = true,
-        .mirror_x = true,
-        .mirror_y = false,
-    },
-    .lcd_cs_expander = .{
-        .i2c_addr = @as(u8, 0x19),
-        .output_port_reg = @as(u8, 0x01),
-        .config_port_reg = @as(u8, 0x03),
-        .cs_bit = @as(u8, 0x01),
-        .init_output = @as(u8, 0x05),
-        .init_config = @as(u8, 0xF8),
-    },
-    .battery_adc = .{
-        .unit = 0,
-        .channel = 9,
-        .empty_mv = @as(u32, 3300),
-        .full_mv = @as(u32, 4200),
-        .divider_num = @as(u32, 2),
-        .divider_den = @as(u32, 1),
+    .partition_table = partition.Table{
+        .offset = 0x8000,
+        .entries = &.{
+            .{
+                .name = "nvs",
+                .kind = .data,
+                .subtype = .nvs,
+                .size = 16 * KiB,
+                .data = partition.data.nvs(.{
+                    .ota_led = .{
+                        .boot_count = 0,
+                        .active_color = build_options.color,
+                    },
+                }),
+            },
+            .{ .name = "otadata", .kind = .data, .subtype = .ota, .size = 8 * KiB },
+            .{ .name = "phy_init", .kind = .data, .subtype = .phy, .size = 4 * KiB },
+            .{ .name = "ota_0", .kind = .app, .subtype = .ota_0, .size = (3 * MiB) / 2 },
+            .{ .name = "ota_1", .kind = .app, .subtype = .ota_1, .size = (3 * MiB) / 2 },
+            .{
+                .name = "fw_store",
+                .kind = .data,
+                .subtype = .spiffs,
+                .size = 896 * KiB,
+                .data = partition.data.spiffs("firmware"),
+            },
+        },
     },
 };

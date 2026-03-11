@@ -2,7 +2,7 @@ const modules = @import("idf").sdkconfig_components;
 const partition = @import("idf").partition;
 
 pub const config = .{
-    .core = modules.esp_system_config.Config.default,
+    .core = modules.esp_system_config.Config.withDefaultConfig(.{ .main_task_stack_size = 32768 }),
     .freertos = modules.freertos_config.Config.default,
     .app_metadata = modules.app_metadata_config.Config.default,
     .app_trace = modules.app_trace_config.Config.default,
@@ -36,17 +36,30 @@ pub const config = .{
     .esp_https_server = modules.esp_https_server_config.Config.default,
     .esp_hw_support = modules.esp_hw_support_config.Config.default,
     .esp_lcd = modules.esp_lcd_config.Config.default,
-    .esp_misc = modules.esp_misc_config.Config.default,
+    .esp_misc = modules.esp_misc_config.Config.withDefaultConfig(.{
+        .esp_main_task_stack_size = 32768,
+        .esp_default_cpu_freq_mhz = 240,
+        .esp_default_cpu_freq_mhz_160 = false,
+        .esp_default_cpu_freq_mhz_240 = true,
+    }),
     .esp_mm = modules.esp_mm_config.Config.default,
     .esp_netif = modules.esp_netif_config.Config.default,
     .esp_phy = modules.esp_phy_config.Config.default,
     .esp_pm = modules.esp_pm_config.Config.default,
-    .esp_psram = modules.esp_psram_config.Config.default,
+    .esp_psram = modules.esp_psram_config.Config.withDefaultConfig(.{
+        .spiram = true,
+        .spiram_mode_oct = true,
+        .spiram_speed_80m = true,
+    }),
     .esp_security = modules.esp_security_config.Config.default,
     .esp_timer = modules.esp_timer_config.Config.default,
     .esp_wifi = modules.esp_wifi_config.Config.default,
     .espcoredump = modules.espcoredump_config.Config.default,
-    .esptool_py = modules.esptool_py_config.Config.default,
+    .esptool_py = modules.esptool_py_config.Config.withDefaultConfig(.{
+        .esptoolpy_flashsize = "16MB",
+        .esptoolpy_flashsize_2mb = false,
+        .esptoolpy_flashsize_16mb = true,
+    }),
     .fatfs = modules.fatfs_config.Config.default,
     .hal = modules.hal_config.Config.default,
     .heap = modules.heap_config.Config.default,
@@ -63,7 +76,12 @@ pub const config = .{
     .soc = modules.soc_config.Config.default,
     .spi_flash = modules.spi_flash_config.Config.default,
     .spiffs = modules.spiffs_config.Config.default,
-    .target_soc = modules.target_soc_config.Config.default,
+    .target_soc = modules.target_soc_config.Config.withDefaultConfig(.{
+        .esp32s3_spiram_support = true,
+        .esp32s3_default_cpu_freq_mhz = 240,
+        .esp32s3_default_cpu_freq_160 = false,
+        .esp32s3_default_cpu_freq_240 = true,
+    }),
     .tcp_transport = modules.tcp_transport_config.Config.default,
     .toolchain = modules.toolchain_config.Config.default,
     .ulp = modules.ulp_config.Config.default,
@@ -73,19 +91,11 @@ pub const config = .{
     .wear_levelling = modules.wear_levelling_config.Config.default,
     .wpa_supplicant = modules.wpa_supplicant_config.Config.default,
     .board = .{
-        .name = @as([]const u8, "board.esp32s3_devkit"),
+        .name = @as([]const u8, "board.esp32s3_krovo2_v3"),
         .chip = @as([]const u8, "esp32s3"),
         .target_arch = @as([]const u8, "xtensa"),
         .target_arch_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ARCH_XTENSA"),
         .target_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ESP32S3"),
     },
     .partition_table = partition.default_table,
-};
-
-pub const pins = .{
-    .wifi = .{
-        .ssid = @as([]const u8, "espz-test-ap"),
-        .password = @as([]const u8, "espz1234"),
-        .listen_interval = @as(u16, 3),
-    },
 };

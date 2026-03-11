@@ -5,21 +5,9 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const build_config = b.option([]const u8, "build_config", "Board build config file path") orelse
-        @panic("missing required -Dbuild_config=board/<name>.zig");
-    const bsp_file = b.option([]const u8, "bsp", "Board BSP file path") orelse
-        @panic("missing required -Dbsp=board/<name>/bsp.zig");
-    const build_dir = b.option([]const u8, "build_dir", "Directory for all generated workflow files") orelse "build";
-
-    const runtime = esp.idf.build.externalRuntimeOptionsFromBuild(b);
-
-    _ = esp.idf.build.registerApp(b, .{
+    _ = esp.idf.build.registerApp(b, "aec_7210_8311", .{
         .target = target,
         .optimize = optimize,
-        .app_name = "aec_7210_8311",
-        .build_config = build_config,
-        .bsp_file = bsp_file,
-        .build_dir = build_dir,
-        .runtime = runtime,
+        .embed_links = .{},
     });
 }

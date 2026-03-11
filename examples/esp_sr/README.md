@@ -37,11 +37,12 @@ Regenerate with: `python3 audio/gen_test_audio.py`
 cd examples/esp_sr
 
 # SZP board
-zig build flash-monitor -Dboard=board/esp32s3_szp.zig -Dport=/dev/cu.usbmodem14301 -Desp_idf=$ESP_IDF -Dtimeout=15
+zig build flash-monitor -Dbuild_config=board/esp32s3_szp/build_config.zig -Dbsp=board/esp32s3_szp/bsp.zig -Dport=/dev/cu.usbmodem14301 -Desp_idf=$ESP_IDF -Dtimeout=15
 
 # DevKit board
-zig build flash-monitor -Dboard=board/esp32s3_devkit.zig -Dport=/dev/cu.usbmodem1301 -Desp_idf=$ESP_IDF -Dtimeout=15
+zig build flash-monitor -Dbuild_config=board/esp32s3_devkit/build_config.zig -Dbsp=board/esp32s3_devkit/bsp.zig -Dport=/dev/cu.usbmodem1301 -Desp_idf=$ESP_IDF -Dtimeout=15
 ```
+当前示例已切换到拆分式 board 目录，因此需要同时传入 `-Dbuild_config` 与 `-Dbsp`。
 
 ## Test Results
 
@@ -178,5 +179,7 @@ Boot free memory: PSRAM 8,386,148 / 8,388,608 bytes, DRAM 349,207 / 429,575 byte
 - `src/near_end.raw` — embedded near-end audio (1 kHz sine)
 - `audio/gen_test_audio.py` — Python script to regenerate .raw files
 - `build.zig` — build configuration
-- `board/esp32s3_devkit.zig` — DevKit board profile (8MB flash, PSRAM)
-- `board/esp32s3_szp.zig` — SZP board profile (16MB flash, PSRAM)
+- `board/esp32s3_devkit/build_config.zig` — DevKit build-time sdkconfig profile (8MB flash, PSRAM)
+- `board/esp32s3_devkit/bsp.zig` — DevKit runtime board module
+- `board/esp32s3_szp/build_config.zig` — SZP build-time sdkconfig profile (16MB flash, PSRAM)
+- `board/esp32s3_szp/bsp.zig` — SZP runtime board module

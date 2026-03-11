@@ -48,14 +48,20 @@ pub fn renderCsv(allocator: std.mem.Allocator, entries: anytype) std.mem.Allocat
 
     for (entries) |entry| {
         const flags = entry.flags orelse "";
+        const subtype = try subtypeTextAlloc(allocator, entry.subtype);
+        defer allocator.free(subtype);
+        const offset = try formatOptionalHexAlloc(allocator, entry.offset);
+        defer allocator.free(offset);
+        const size = try formatHexAlloc(allocator, entry.size);
+        defer allocator.free(size);
         try writer.print(
             "{s}, {s}, {s}, {s}, {s}, {s}\n",
             .{
                 entry.name,
                 typeText(entry.kind),
-                try subtypeTextAlloc(allocator, entry.subtype),
-                try formatOptionalHexAlloc(allocator, entry.offset),
-                try formatHexAlloc(allocator, entry.size),
+                subtype,
+                offset,
+                size,
                 flags,
             },
         );

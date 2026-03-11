@@ -14,8 +14,9 @@ Wi-Fi SoftAP 示例。开启指定 SSID 的热点，等待 STA 连接。
 
 ```bash
 cd examples/wifi/ap
-zig build flash-monitor -Dboard=board/esp32s3_devkit.zig -Dport=/dev/cu.usbmodem1301 -Desp_idf=$ESP_IDF -Dtimeout=15
+zig build flash-monitor -Dbuild_config=board/esp32s3_devkit/build_config.zig -Dbsp=board/esp32s3_devkit/bsp.zig -Dport=/dev/cu.usbmodem1301 -Desp_idf=$ESP_IDF -Dtimeout=15
 ```
+当前示例已切换到拆分式 board 目录，因此需要同时传入 `-Dbuild_config` 与 `-Dbsp`。
 
 ## 运行结果
 
@@ -36,4 +37,7 @@ zig build flash-monitor -Dboard=board/esp32s3_devkit.zig -Dport=/dev/cu.usbmodem
 
 - `src/main.zig` — 应用逻辑
 - `build.zig` — 构建配置
-- `board/*.zig` — 板级配置（esp32s3_devkit.zig, esp32s3_krovo2.zig）
+- `board/esp32s3_devkit/build_config.zig` — DevKit build-time sdkconfig profile
+- `board/esp32s3_devkit/bsp.zig` — DevKit runtime SoftAP board module
+- `board/esp32s3_krovo2/build_config.zig` — Krovo2 build-time sdkconfig profile
+- `board/esp32s3_krovo2/bsp.zig` — Krovo2 runtime SoftAP board module

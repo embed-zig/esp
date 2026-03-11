@@ -91,29 +91,11 @@ pub const config = .{
     .wear_levelling = modules.wear_levelling_config.Config.default,
     .wpa_supplicant = modules.wpa_supplicant_config.Config.default,
     .board = .{
-        .name = @as([]const u8, "board.esp32s3_korvo2_v3"),
+        .name = @as([]const u8, "board.esp32s3_krovo2_v3"),
         .chip = @as([]const u8, "esp32s3"),
         .target_arch = @as([]const u8, "xtensa"),
         .target_arch_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ARCH_XTENSA"),
         .target_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ESP32S3"),
     },
-    .partition_table = .{
-        .offset_hex = "0x8000",
-        .entries = &[_]partition.schema.Partition{
-            .{ .name = "nvs", .kind = .data, .subtype = "nvs", .offset_hex = "0x9000", .size_hex = "0x6000", .data = .{
-                .name = "nvs",
-                .size = 0x6000,
-                .type = .data,
-                .subtype = "nvs",
-                .offset = 0x9000,
-                .flags = .{
-                    .read_only = true,
-                },
-            },
-            },
-            .{ .name = "phy_init", .kind = .data, .subtype = "phy", .offset_hex = "0xf000", .size_hex = "0x1000" },
-            .{ .name = "factory", .kind = .app, .subtype = "factory", .offset_hex = "0x10000", .size_hex = "1M" },
-            .{ .name = "data", .kind = .app, .subtype = "factory", .offset_hex = "0x10000", .size_hex = "1M", .data_dir = "./data" },
-        },
-    },
+    .partition_table = partition.default_table,
 };

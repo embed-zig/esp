@@ -1,17 +1,8 @@
 const modules = @import("idf").sdkconfig_components;
 const partition = @import("idf").partition;
-const build_options = @import("build_options");
-
-const KiB: u32 = 1024;
-const MiB: u32 = 1024 * KiB;
 
 pub const config = .{
-    .core = modules.esp_system_config.Config.withDefaultConfig(.{
-        .main_task_stack_size = 8192,
-    }),
-    .esp_misc = modules.esp_misc_config.Config.withDefaultConfig(.{
-        .esp_main_task_stack_size = 8192,
-    }),
+    .core = modules.esp_system_config.Config.default,
     .freertos = modules.freertos_config.Config.default,
     .app_metadata = modules.app_metadata_config.Config.default,
     .app_trace = modules.app_trace_config.Config.default,
@@ -45,6 +36,7 @@ pub const config = .{
     .esp_https_server = modules.esp_https_server_config.Config.default,
     .esp_hw_support = modules.esp_hw_support_config.Config.default,
     .esp_lcd = modules.esp_lcd_config.Config.default,
+    .esp_misc = modules.esp_misc_config.Config.default,
     .esp_mm = modules.esp_mm_config.Config.default,
     .esp_netif = modules.esp_netif_config.Config.default,
     .esp_phy = modules.esp_phy_config.Config.default,
@@ -54,11 +46,7 @@ pub const config = .{
     .esp_timer = modules.esp_timer_config.Config.default,
     .esp_wifi = modules.esp_wifi_config.Config.default,
     .espcoredump = modules.espcoredump_config.Config.default,
-    .esptool_py = modules.esptool_py_config.Config.withDefaultConfig(.{
-        .esptoolpy_flashsize = "4MB",
-        .esptoolpy_flashsize_2mb = false,
-        .esptoolpy_flashsize_4mb = true,
-    }),
+    .esptool_py = modules.esptool_py_config.Config.default,
     .fatfs = modules.fatfs_config.Config.default,
     .hal = modules.hal_config.Config.default,
     .heap = modules.heap_config.Config.default,
@@ -91,45 +79,5 @@ pub const config = .{
         .target_arch_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ARCH_XTENSA"),
         .target_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ESP32S3"),
     },
-    .app = .{
-        .color = build_options.color,
-    },
-    .partition_table = partition.Table{
-        .offset = 0x8000,
-        .entries = &.{
-            .{
-                .name = "nvs",
-                .kind = .data,
-                .subtype = .nvs,
-                .size = 16 * KiB,
-                .data = partition.data.nvs(.{
-                    .ota_led = .{
-                        .boot_count = 0,
-                        .active_color = build_options.color,
-                    },
-                }),
-            },
-            .{ .name = "otadata", .kind = .data, .subtype = .ota, .size = 8 * KiB },
-            .{ .name = "phy_init", .kind = .data, .subtype = .phy, .size = 4 * KiB },
-            .{ .name = "ota_0", .kind = .app, .subtype = .ota_0, .size = (3 * MiB) / 2 },
-            .{ .name = "ota_1", .kind = .app, .subtype = .ota_1, .size = (3 * MiB) / 2 },
-            .{
-                .name = "fw_store",
-                .kind = .data,
-                .subtype = .spiffs,
-                .size = 896 * KiB,
-                .data = partition.data.spiffs("firmware"),
-            },
-        },
-    },
-};
-
-pub const pins = .{
-    .led_strip = .{
-        .gpio = @as(i32, 48),
-        .max_leds = @as(u32, 1),
-    },
-    .boot_button = .{
-        .gpio = @as(i32, 0),
-    },
+    .partition_table = partition.default_table,
 };

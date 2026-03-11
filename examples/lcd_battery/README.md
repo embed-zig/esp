@@ -16,8 +16,9 @@ SZP 开发板 LCD 电池电量显示示例。使用 esp_lcd 模块驱动 ST7789 
 
 ```bash
 cd examples/lcd_battery
-zig build flash-monitor -Dboard=board/esp32s3_szp.zig -Dport=/dev/cu.usbmodem14301 -Desp_idf=$ESP_IDF -Dtimeout=15
+zig build flash-monitor -Dbuild_config=board/esp32s3_szp/build_config.zig -Dbsp=board/esp32s3_szp/bsp.zig -Dport=/dev/cu.usbmodem14301 -Desp_idf=$ESP_IDF -Dtimeout=15
 ```
+当前示例已切换到拆分式 board 目录，因此需要同时传入 `-Dbuild_config` 与 `-Dbsp`。
 
 ## 运行结果
 
@@ -38,4 +39,5 @@ zig build flash-monitor -Dboard=board/esp32s3_szp.zig -Dport=/dev/cu.usbmodem143
 
 - `src/main.zig` — 应用逻辑
 - `build.zig` — 构建配置
-- `board/*.zig` — 板级配置（esp32s3_szp.zig）
+- `board/esp32s3_szp/build_config.zig` — build-time sdkconfig profile
+- `board/esp32s3_szp/bsp.zig` — runtime board module（LCD、I2C 与电池采样定义）

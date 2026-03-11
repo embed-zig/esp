@@ -47,6 +47,7 @@ pub fn renderPartitionCsv(allocator: std.mem.Allocator) ![]u8 {
     const table = partitionTable();
     validatePartitionTable(table);
     const resolved = try partition.resolveEntriesAlloc(allocator, table);
+    defer allocator.free(resolved);
     return partition.renderCsv(allocator, resolved);
 }
 

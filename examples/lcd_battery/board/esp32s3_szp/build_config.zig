@@ -3,6 +3,16 @@ const partition = @import("idf").partition;
 
 pub const config = .{
     .core = modules.esp_system_config.Config.default,
+    .esp_misc = modules.esp_misc_config.Config.withDefaultConfig(.{
+        .esp_default_cpu_freq_mhz = 240,
+        .esp_default_cpu_freq_mhz_160 = false,
+        .esp_default_cpu_freq_mhz_240 = true,
+    }),
+    .target_soc = modules.target_soc_config.Config.withDefaultConfig(.{
+        .esp32s3_default_cpu_freq_mhz = 240,
+        .esp32s3_default_cpu_freq_160 = false,
+        .esp32s3_default_cpu_freq_240 = true,
+    }),
     .freertos = modules.freertos_config.Config.default,
     .app_metadata = modules.app_metadata_config.Config.default,
     .app_trace = modules.app_trace_config.Config.default,
@@ -36,7 +46,6 @@ pub const config = .{
     .esp_https_server = modules.esp_https_server_config.Config.default,
     .esp_hw_support = modules.esp_hw_support_config.Config.default,
     .esp_lcd = modules.esp_lcd_config.Config.default,
-    .esp_misc = modules.esp_misc_config.Config.default,
     .esp_mm = modules.esp_mm_config.Config.default,
     .esp_netif = modules.esp_netif_config.Config.default,
     .esp_phy = modules.esp_phy_config.Config.default,
@@ -63,7 +72,6 @@ pub const config = .{
     .soc = modules.soc_config.Config.default,
     .spi_flash = modules.spi_flash_config.Config.default,
     .spiffs = modules.spiffs_config.Config.default,
-    .target_soc = modules.target_soc_config.Config.default,
     .tcp_transport = modules.tcp_transport_config.Config.default,
     .toolchain = modules.toolchain_config.Config.default,
     .ulp = modules.ulp_config.Config.default,
@@ -73,21 +81,11 @@ pub const config = .{
     .wear_levelling = modules.wear_levelling_config.Config.default,
     .wpa_supplicant = modules.wpa_supplicant_config.Config.default,
     .board = .{
-        .name = @as([]const u8, "board.esp32s3_devkit"),
+        .name = @as([]const u8, "board.esp32s3_szp"),
         .chip = @as([]const u8, "esp32s3"),
         .target_arch = @as([]const u8, "xtensa"),
         .target_arch_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ARCH_XTENSA"),
         .target_config_flag = @as([]const u8, "CONFIG_IDF_TARGET_ESP32S3"),
     },
     .partition_table = partition.default_table,
-};
-
-pub const pins = .{
-    .wifi_ap = .{
-        .ssid = @as([]const u8, "espz-test-ap"),
-        .password = @as([]const u8, "espz1234"),
-        .channel = @as(u8, 6),
-        .max_connection = @as(u8, 4),
-        .hidden = false,
-    },
 };

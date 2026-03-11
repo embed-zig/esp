@@ -1,7 +1,7 @@
 .{
     .name = .spiffs_compile_test,
     .version = "0.1.0",
-    .fingerprint = 0xa3e1b7c9d5f24680,
+    .fingerprint = 0xb8e2c232661834f8,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .esp = .{

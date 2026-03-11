@@ -21,20 +21,23 @@ the next OTA slot, and reboots.
 ## Build and flash
 
 ```bash
+cd examples/ota_led
+
 # Build red firmware
-zig build idf-build -Dcolor=red -Desp_idf=/path/to/esp-idf
+zig build build -Dbuild_config=board/esp32s3_devkit/build_config.zig -Dbsp=board/esp32s3_devkit/bsp.zig -Dcolor=red -Desp_idf=/path/to/esp-idf
 cp build/idf/build/ota_led.bin firmware/red.bin
 
 # Build green firmware
-zig build idf-build -Dcolor=green -Desp_idf=/path/to/esp-idf
+zig build build -Dbuild_config=board/esp32s3_devkit/build_config.zig -Dbsp=board/esp32s3_devkit/bsp.zig -Dcolor=green -Desp_idf=/path/to/esp-idf
 cp build/idf/build/ota_led.bin firmware/green.bin
 
 # Flash red as initial firmware + fw_store with both bins
-zig build flash -Dcolor=red -Dport=/dev/cu.usbmodem1301 -Desp_idf=/path/to/esp-idf
+zig build flash -Dbuild_config=board/esp32s3_devkit/build_config.zig -Dbsp=board/esp32s3_devkit/bsp.zig -Dcolor=red -Dport=/dev/cu.usbmodem1301 -Desp_idf=/path/to/esp-idf
 
 # Monitor
-zig build monitor -Dport=/dev/cu.usbmodem1301 -Desp_idf=/path/to/esp-idf
+zig build monitor -Dbuild_config=board/esp32s3_devkit/build_config.zig -Dbsp=board/esp32s3_devkit/bsp.zig -Dport=/dev/cu.usbmodem1301 -Desp_idf=/path/to/esp-idf
 ```
+当前示例已切换到拆分式 board 目录，因此需要同时传入 `-Dbuild_config` 与 `-Dbsp`；板级配置与 `-Dcolor` 应用选项可以同时传入。
 
 ## Expected behavior
 

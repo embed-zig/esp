@@ -81,11 +81,3 @@ pub const config = .{
     },
     .partition_table = partition.default_table,
 };
-
-pub const pins = .{
-    .wifi = .{
-        .ssid = @as([]const u8, "espz-test-ap"),
-        .password = @as([]const u8, "espz1234"),
-        .listen_interval = @as(u16, 3),
-    },
-};
